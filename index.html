@@ -123,6 +123,7 @@
     .btn-primary { background: #1a73e8; color: white; }
     .btn-secondary { background: #4a4d52; color: white; }
     .btn-cpu { background: #e65100; color: white; }
+    .btn-hard { background: #b71c1c; color: white; }
     .btn-tsuke { background: #2e7d32; color: white; }
     .btn-take { background: #c62828; color: white; }
     .btn-negaeri { background: #7b1fa2; color: white; }
@@ -149,7 +150,8 @@
     <h3>対局モード選択</h3>
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
-      <button id="btn-vs-cpu" class="btn-action btn-cpu">1人プレイ (vs CPU)</button>
+      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 標準)</button>
+      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 最強)</button>
       <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・固定配置)</button>
       <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・自由配置)</button>
     </div>
@@ -171,6 +173,7 @@
     <h3 id="win-title" style="font-size: 22px; color: #f0c040;">決着！</h3>
     <p id="win-desc" style="font-size: 14px; margin: 10px 0;"></p>
     <div class="modal-btns">
+      <button id="win-undo-btn" class="btn-action btn-undo">待った（やり直す）</button>
       <button onclick="location.reload()" class="btn-action btn-primary">もう一度遊ぶ</button>
     </div>
   </div>
@@ -238,6 +241,7 @@
     // --- 4. ゲーム状態管理 ＆ 履歴 ---
     let isPlayer1Turn = true;
     let isVsCPU = false;
+    let cpuLevel = 'NORMAL'; // 'NORMAL' or 'HARD'
     let isCPUThinking = false;
     let phase = 'INIT'; 
     let p1Done = false;
@@ -524,7 +528,7 @@
       return frontline;
     }
 
-    // --- 8. 移動計算（帥へのツケ不可ルール適用） ---
+    // --- 8. 精密な全駒移動計算（提示定義通り） ---
     function getValidMoves(pieceData) {
       const validMoves = [];
       
@@ -542,7 +546,6 @@
               const stack = boardData[x][z];
               const isEnemyTop = stack.length > 0 && stack[stack.length - 1].isPlayer1 !== pieceData.isPlayer1;
               const isSuiTop = stack.length > 0 && stack[stack.length - 1].name === '帥';
-              // 3段未満、相手の駒の上でなく、かつ「帥」の上でもない場合のみ可能
               if (isValidArataZ && stack.length < 3 && !isEnemyTop && !isSuiTop) {
                 validMoves.push({ x, z, levelColor: 1 });
               }
@@ -558,24 +561,19 @@
       const movingPieceLevel = stack.length;
       const dir = pieceData.isPlayer1 ? -1 : 1;
 
-      // 移動制限判定：自分より高い段の駒への移動不可 ＆ 「帥」の上にツケる（重ねる）こと不可
       const checkHeightAndSuiLimit = (tx, tz) => {
         const targetStack = boardData[tx][tz];
-        if (targetStack.length > movingPieceLevel) {
-          return false;
-        }
+        if (targetStack.length > movingPieceLevel) return false;
         if (targetStack.length > 0) {
           const topPiece = targetStack[targetStack.length - 1];
-          // 移動先に『帥』が存在し、かつ『取る（色違い）』ではなく『ツケる（同色または取れない動作）』になる場合は不可
           if (topPiece.name === '帥' && topPiece.isPlayer1 === pieceData.isPlayer1) {
-            return false; // 味方の帥の上には絶対に重ねられない
+            return false;
           }
         }
         return true;
       };
 
-      const addPath = (dx, dz, targetStep, reqLevel, colorTag) => {
-        if (reqLevel !== 0 && movingPieceLevel < reqLevel) return;
+      const addPath = (dx, dz, colorTag) => {
         const normX = dx === 0 ? 0 : dx / Math.abs(dx);
         const normZ = dz === 0 ? 0 : dz / Math.abs(dz);
         const distance = Math.max(Math.abs(dx), Math.abs(dz));
@@ -596,8 +594,7 @@
         }
       };
 
-      const addRay = (dx, dz, maxSteps, reqLevel, colorTag) => {
-        if (reqLevel !== 0 && movingPieceLevel < reqLevel) return;
+      const addRay = (dx, dz, maxSteps, colorTag) => {
         for (let i = 1; i <= maxSteps; i++) {
           const tx = cx + dx * i;
           const tz = cz + dz * i;
@@ -637,124 +634,155 @@
 
       const name = pieceData.name;
 
+      // 各駒の正確なベクトル移動定義
       if (name === '帥') {
-        const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
-        if (movingPieceLevel >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
-        if (movingPieceLevel >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
-      }
-      else if (name === '大') {
-        const diagDirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
-        diagDirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
-        if (movingPieceLevel >= 2) diagDirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
-        if (movingPieceLevel >= 3) diagDirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
-        [[0,1],[0,-1],[-1,0],[1,0]].forEach(([dx,dz]) => addRay(dx, dz, 8, 0, 0));
-      }
-      else if (name === '中') {
-        const orthoDirs = [[0,1],[0,-1],[-1,0],[1,0]];
-        orthoDirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
-        if (movingPieceLevel >= 2) orthoDirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
-        if (movingPieceLevel >= 3) orthoDirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
-        [[-1,1],[1,1],[-1,-1],[1,-1]].forEach(([dx,dz]) => addRay(dx, dz, 8, 0, 0));
-      }
-      else if (name === '小') {
-        const dirs = [[0,dir],[-1,dir],[1,dir],[-1,0],[1,0],[0,-dir]];
-        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
-        if (movingPieceLevel >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
-        if (movingPieceLevel >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
-      }
-      else if (name === '侍') {
-        const dirs = [[0,dir],[-1,dir],[1,dir],[0,-dir]];
-        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
-        if (movingPieceLevel >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
-        if (movingPieceLevel >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
-      }
-      else if (name === '槍') {
-        addPath(0, dir, 1, 1, 1); addPath(-1, dir, 1, 1, 1); addPath(1, dir, 1, 1, 1);
-        addPath(0, -dir, 1, 1, 1); addPath(0, dir*2, 2, 1, 1);
+        const v1 = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+        v1.forEach(([dx,dz]) => addPath(dx, dz, 1));
         if (movingPieceLevel >= 2) {
-          addPath(-2, dir*2, 2, 2, 2); addPath(2, dir*2, 2, 2, 2);
-          addPath(0, -dir*2, 2, 2, 2); addPath(0, dir*3, 3, 2, 2);
+          const v2 = [[-2,-2],[-2,0],[-2,2],[0,-2],[0,2],[2,-2],[2,0],[2,2]];
+          v2.forEach(([dx,dz]) => addPath(dx, dz, 2));
         }
         if (movingPieceLevel >= 3) {
-          addPath(-3, dir*3, 3, 3, 3); addPath(3, dir*3, 3, 3, 3);
-          addPath(0, -dir*3, 3, 3, 3); addPath(0, dir*4, 4, 3, 3);
+          const v3 = [[-3,-3],[-3,0],[-3,3],[0,-3],[0,3],[3,-3],[3,0],[3,3]];
+          v3.forEach(([dx,dz]) => addPath(dx, dz, 3));
+        }
+      }
+      else if (name === '大') {
+        addPath(-1,-1,1); addPath(-1,1,1); addPath(1,-1,1); addPath(1,1,1);
+        if (movingPieceLevel >= 2) { addPath(-2,-2,2); addPath(-2,2,2); addPath(2,-2,2); addPath(2,2,2); }
+        if (movingPieceLevel >= 3) { addPath(-3,-3,3); addPath(-3,3,3); addPath(3,-3,3); addPath(3,3,3); }
+        [[0,1],[0,-1],[-1,0],[1,0]].forEach(([dx,dz]) => addRay(dx, dz, 8, 0));
+      }
+      else if (name === '中') {
+        addPath(0,1,1); addPath(0,-1,1); addPath(-1,0,1); addPath(1,0,1);
+        if (movingPieceLevel >= 2) { addPath(0,2,2); addPath(0,-2,2); addPath(-2,0,2); addPath(2,0,2); }
+        if (movingPieceLevel >= 3) { addPath(0,3,3); addPath(0,-3,3); addPath(-3,0,3); addPath(3,0,3); }
+        [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([dx,dz]) => addRay(dx, dz, 8, 0));
+      }
+      else if (name === '小') {
+        const v1 = [[0,dir],[-1,dir],[1,dir],[-1,0],[1,0],[0,-dir]];
+        v1.forEach(([dx,dz]) => addPath(dx, dz, 1));
+        if (movingPieceLevel >= 2) {
+          const v2 = [[0,dir*2],[-2,dir*2],[2,dir*2],[-2,0],[2,0],[0,-dir*2]];
+          v2.forEach(([dx,dz]) => addPath(dx, dz, 2));
+        }
+        if (movingPieceLevel >= 3) {
+          const v3 = [[0,dir*3],[-3,dir*3],[3,dir*3],[-3,0],[3,0],[0,-dir*3]];
+          v3.forEach(([dx,dz]) => addPath(dx, dz, 3));
+        }
+      }
+      else if (name === '侍') {
+        const v1 = [[0,dir],[-1,dir],[1,dir],[0,-dir]];
+        v1.forEach(([dx,dz]) => addPath(dx, dz, 1));
+        if (movingPieceLevel >= 2) {
+          const v2 = [[0,dir*2],[-2,dir*2],[2,dir*2],[0,-dir*2]];
+          v2.forEach(([dx,dz]) => addPath(dx, dz, 2));
+        }
+        if (movingPieceLevel >= 3) {
+          const v3 = [[0,dir*3],[-3,dir*3],[3,dir*3],[0,-dir*3]];
+          v3.forEach(([dx,dz]) => addPath(dx, dz, 3));
+        }
+      }
+      else if (name === '槍') {
+        const v1 = [[0,dir],[-1,dir],[1,dir],[0,-dir],[0,dir*2]];
+        v1.forEach(([dx,dz]) => addPath(dx, dz, 1));
+        if (movingPieceLevel >= 2) {
+          const v2 = [[-2,dir*2],[2,dir*2],[0,-dir*2],[0,dir*3]];
+          v2.forEach(([dx,dz]) => addPath(dx, dz, 2));
+        }
+        if (movingPieceLevel >= 3) {
+          const v3 = [[-3,dir*3],[3,dir*3],[0,-dir*3],[0,dir*4]];
+          v3.forEach(([dx,dz]) => addPath(dx, dz, 3));
         }
       }
       else if (name === '馬') {
-        addPath(-1, 0, 1, 1, 1); addPath(1, 0, 1, 1, 1);
-        addPath(0, dir, 1, 1, 1); addPath(0, dir*2, 2, 1, 1);
-        addPath(0, -dir, 1, 1, 1); addPath(0, -dir*2, 2, 1, 1);
+        const v1 = [[-1,0],[1,0],[0,dir],[0,dir*2],[0,-dir],[0,-dir*2]];
+        v1.forEach(([dx,dz]) => addPath(dx, dz, 1));
         if (movingPieceLevel >= 2) {
-          addPath(-2, 0, 2, 2, 2); addPath(2, 0, 2, 2, 2);
-          addPath(0, dir*3, 3, 2, 2); addPath(0, -dir*3, 3, 2, 2);
+          const v2 = [[-2,0],[2,0],[0,dir*3],[0,-dir*3]];
+          v2.forEach(([dx,dz]) => addPath(dx, dz, 2));
         }
         if (movingPieceLevel >= 3) {
-          addPath(-3, 0, 3, 3, 3); addPath(3, 0, 3, 3, 3);
-          addPath(0, dir*4, 4, 3, 3); addPath(0, -dir*4, 4, 3, 3);
+          const v3 = [[-3,0],[3,0],[0,dir*4],[0,-dir*4]];
+          v3.forEach(([dx,dz]) => addPath(dx, dz, 3));
         }
       }
       else if (name === '忍') {
-        const dirs1 = [[-1,dir],[1,dir],[-1,-dir],[1,-dir]];
-        dirs1.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
-        const dirs2 = [[-2,dir*2],[2,dir*2],[-2,-dir*2],[2,-dir*2]];
-        dirs2.forEach(([dx,dz]) => addPath(dx, dz, 2, 1, 1));
-        if (movingPieceLevel >= 2) [[-3,dir*3],[3,dir*3],[-3,-dir*3],[3,-dir*3]].forEach(([dx,dz]) => addPath(dx, dz, 3, 2, 2));
-        if (movingPieceLevel >= 3) [[-4,dir*4],[4,dir*4],[-4,-dir*4],[4,-dir*4]].forEach(([dx,dz]) => addPath(dx, dz, 4, 3, 3));
+        const v1 = [[-1,dir],[1,dir],[-1,-dir],[1,-dir],[-2,dir*2],[2,dir*2],[-2,-dir*2],[2,-dir*2]];
+        v1.forEach(([dx,dz]) => addPath(dx, dz, 1));
+        if (movingPieceLevel >= 2) {
+          const v2 = [[-3,dir*3],[3,dir*3],[-3,-dir*3],[3,-dir*3]];
+          v2.forEach(([dx,dz]) => addPath(dx, dz, 2));
+        }
+        if (movingPieceLevel >= 3) {
+          const v3 = [[-4,dir*4],[4,dir*4],[-4,-dir*4],[4,-dir*4]];
+          v3.forEach(([dx,dz]) => addPath(dx, dz, 3));
+        }
       }
       else if (name === '砦') {
-        const dirs = [[0,dir],[-1,0],[1,0],[-1,-dir],[1,-dir]];
-        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
-        if (movingPieceLevel >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
-        if (movingPieceLevel >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+        const v1 = [[0,dir],[-1,0],[1,0],[-1,-dir],[1,-dir]];
+        v1.forEach(([dx,dz]) => addPath(dx, dz, 1));
+        if (movingPieceLevel >= 2) {
+          const v2 = [[0,dir*2],[-2,0],[2,0],[-2,-dir*2],[2,-dir*2]];
+          v2.forEach(([dx,dz]) => addPath(dx, dz, 2));
+        }
+        if (movingPieceLevel >= 3) {
+          const v3 = [[0,dir*3],[-3,0],[3,0],[-3,-dir*3],[3,-dir*3]];
+          v3.forEach(([dx,dz]) => addPath(dx, dz, 3));
+        }
       }
       else if (name === '兵') {
-        const dirs = [[0,dir],[0,-dir]];
-        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
-        if (movingPieceLevel >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
-        if (movingPieceLevel >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+        const v1 = [[0,dir],[0,-dir]];
+        v1.forEach(([dx,dz]) => addPath(dx, dz, 1));
+        if (movingPieceLevel >= 2) {
+          const v2 = [[0,dir*2],[0,-dir*2]];
+          v2.forEach(([dx,dz]) => addPath(dx, dz, 2));
+        }
+        if (movingPieceLevel >= 3) {
+          const v3 = [[0,dir*3],[0,-dir*3]];
+          v3.forEach(([dx,dz]) => addPath(dx, dz, 3));
+        }
       }
       else if (name === '砲') {
-        addPath(-1, 0, 1, 1, 1); addPath(1, 0, 1, 1, 1); addPath(0, -dir, 1, 1, 1);
+        addPath(-1, 0, 1); addPath(1, 0, 1); addPath(0, -dir, 1);
         addJumpByOffset(0, dir*3, 0);
         if (movingPieceLevel >= 2) {
-          addPath(-2, 0, 2, 2, 2); addPath(2, 0, 2, 2, 2); addPath(0, -dir*2, 2, 2, 2);
+          addPath(-2, 0, 2); addPath(2, 0, 2); addPath(0, -dir*2, 2);
           addJumpByOffset(0, dir*4, 0);
         }
         if (movingPieceLevel >= 3) {
-          addPath(-3, 0, 3, 3, 3); addPath(3, 0, 3, 3, 3); addPath(0, -dir*3, 3, 3, 3);
+          addPath(-3, 0, 3); addPath(3, 0, 3); addPath(0, -dir*3, 3);
           addJumpByOffset(0, dir*5, 0);
         }
       }
       else if (name === '弓') {
-        addPath(0, -dir, 1, 1, 1);
+        addPath(0, -dir, 1);
         [[-1, dir*2], [0, dir*2], [1, dir*2]].forEach(([dx, dz]) => addJumpByOffset(dx, dz, 0));
         if (movingPieceLevel >= 2) {
-          addPath(0, -dir*2, 2, 2, 2);
+          addPath(0, -dir*2, 2);
           [[-2, dir*3], [0, dir*3], [2, dir*3]].forEach(([dx, dz]) => addJumpByOffset(dx, dz, 0));
         }
         if (movingPieceLevel >= 3) {
-          addPath(0, -dir*3, 3, 3, 3);
+          addPath(0, -dir*3, 3);
           [[-3, dir*4], [0, dir*4], [3, dir*4]].forEach(([dx, dz]) => addJumpByOffset(dx, dz, 0));
         }
       }
       else if (name === '筒') {
-        addPath(-1, -dir, 1, 1, 1); addPath(1, -dir, 1, 1, 1);
+        addPath(-1, -dir, 1); addPath(1, -dir, 1);
         addJumpByOffset(0, dir*2, 0);
         if (movingPieceLevel >= 2) {
-          addPath(-2, -dir*2, 2, 2, 2); addPath(2, -dir*2, 2, 2, 2);
+          addPath(-2, -dir*2, 2); addPath(2, -dir*2, 2);
           addJumpByOffset(0, dir*3, 0);
         }
         if (movingPieceLevel >= 3) {
-          addPath(-3, -dir*3, 3, 3, 3); addPath(3, -dir*3, 3, 3, 3);
+          addPath(-3, -dir*3, 3); addPath(3, -dir*3, 3);
           addJumpByOffset(0, dir*4, 0);
         }
       }
       else if (name === '謀') {
-        const dirs = [[-1,dir],[1,dir],[0,-dir]];
-        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
-        if (movingPieceLevel >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
-        if (movingPieceLevel >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+        addPath(-1, dir, 1); addPath(1, dir, 1); addPath(0, -dir, 1);
+        if (movingPieceLevel >= 2) { addPath(-2, dir*2, 2); addPath(2, dir*2, 2); addPath(0, -dir*2, 2); }
+        if (movingPieceLevel >= 3) { addPath(-3, dir*3, 3); addPath(3, dir*3, 3); addPath(0, -dir*3, 3); }
       }
 
       return validMoves;
@@ -781,12 +809,27 @@
       return true;
     }
 
-    // --- 9. 思考型AI（完全安全最優先思考ロジック） ---
+    // --- 9. AI思考（標準CPU ＆ 深層探索最強CPU） ---
     const PIECE_VALUES = {
       '帥': 9999, '大': 50, '中': 40, '侍': 20, '馬': 20, 
       '忍': 15, '槍': 12, '弓': 10, '砲': 10, '筒': 10, 
       '砦': 8, '兵': 5, '小': 5, '謀': 15
     };
+
+    function evaluateBoardState() {
+      let score = 0;
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        for (let z = 0; z < BOARD_SIZE; z++) {
+          const stack = boardData[x][z];
+          stack.forEach((p, idx) => {
+            const val = (PIECE_VALUES[p.name] || 10) * (1 + idx * 0.5);
+            if (!p.isPlayer1) score += val; // CPU(黒)
+            else score -= val; // プレイヤー(白)
+          });
+        }
+      }
+      return score;
+    }
 
     function evaluateCandidateMove(pieceData, targetX, targetZ) {
       let score = 0;
@@ -800,10 +843,7 @@
         }
       }
 
-      if (targetHeight > 0) {
-        score += (targetHeight + 1) * 8;
-      }
-
+      if (targetHeight > 0) score += (targetHeight + 1) * 8;
       score += targetZ * 3;
       if (!pieceData.inHand) score += 5;
       score += Math.random() * 4;
@@ -882,7 +922,7 @@
             if (!topPiece.isPlayer1) {
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
-                const score = evaluateCandidateMove(topPiece, m.x, m.z);
+                let score = evaluateCandidateMove(topPiece, m.x, m.z);
                 const isSafe = testMoveIsSafeForSui(topPiece, m.x, m.z);
                 allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
               });
@@ -894,7 +934,7 @@
       p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
-          const score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
+          let score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
           const isSafe = testMoveIsSafeForSui(handPiece, m.x, m.z);
           allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe });
         });
@@ -903,16 +943,37 @@
       if (allCandidates.length === 0) return;
 
       const safeCandidates = allCandidates.filter(c => c.isSafe);
+      const searchPool = safeCandidates.length > 0 ? safeCandidates : allCandidates;
 
       let chosenMove = null;
 
-      if (safeCandidates.length > 0) {
-        safeCandidates.sort((a, b) => b.score - a.score);
-        chosenMove = safeCandidates[0];
-      } else {
-        allCandidates.sort((a, b) => b.score - a.score);
-        chosenMove = allCandidates[0];
+      if (cpuLevel === 'HARD' && safeCandidates.length > 0) {
+        // 最強モード：1手先の盤面変化評価（ミニマックス）を行って最善手を選択
+        searchPool.forEach(c => {
+          const origX = c.pieceData.gridX;
+          const origZ = c.pieceData.gridZ;
+          const origInHand = c.pieceData.inHand;
+          const sourceStack = origInHand ? null : boardData[origX][origZ];
+          const targetStack = boardData[c.targetX][c.targetZ];
+
+          if (!origInHand) sourceStack.pop();
+          c.pieceData.inHand = false;
+          c.pieceData.gridX = c.targetX;
+          c.pieceData.gridZ = c.targetZ;
+          targetStack.push(c.pieceData);
+
+          c.score += evaluateBoardState() * 2;
+
+          targetStack.pop();
+          c.pieceData.inHand = origInHand;
+          c.pieceData.gridX = origX;
+          c.pieceData.gridZ = origZ;
+          if (!origInHand) sourceStack.push(c.pieceData);
+        });
       }
+
+      searchPool.sort((a, b) => b.score - a.score);
+      chosenMove = searchPool[0];
 
       const targetStack = boardData[chosenMove.targetX][chosenMove.targetZ];
       const hasEnemyTop = targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1;
@@ -922,7 +983,7 @@
       isCPUThinking = false;
     }
 
-    // --- 10. 盤面状態の保存 ＆ 待った機能 ---
+    // --- 10. 盤面状態の保存 ＆ 待った機能（決着後も復元可能） ---
     function saveState() {
       const state = {
         isPlayer1Turn,
@@ -943,6 +1004,8 @@
     }
 
     function restoreState(state) {
+      winModal.style.display = 'none'; // 決着ダイアログを閉じる
+
       boardData.forEach(row => row.forEach(stack => stack.length = 0));
       
       p1HandPieces.forEach(p => { p.inHand = true; p.gridX = -1; p.gridZ = -1; scene.add(p.mesh); });
@@ -1006,6 +1069,7 @@
     }
 
     document.getElementById('undo-btn').addEventListener('click', undoMove);
+    document.getElementById('win-undo-btn').addEventListener('click', undoMove);
 
     // --- 11. タッチ / クリック処理 ---
     const raycaster = new THREE.Raycaster();
@@ -1018,7 +1082,8 @@
     const modeDesc = document.getElementById('mode-desc');
 
     const modeModal = document.getElementById('mode-modal');
-    const btnVsCPU = document.getElementById('btn-vs-cpu');
+    const btnVsCPUNormal = document.getElementById('btn-vs-cpu-normal');
+    const btnVsCPUHard = document.getElementById('btn-vs-cpu-hard');
     const btnVsHumanBeginner = document.getElementById('btn-vs-human-beginner');
     const btnVsHumanStandard = document.getElementById('btn-vs-human-standard');
 
@@ -1034,15 +1099,31 @@
 
     let pendingMove = null;
 
-    btnVsCPU.addEventListener('click', () => {
+    btnVsCPUNormal.addEventListener('click', () => {
       isVsCPU = true;
+      cpuLevel = 'NORMAL';
       phase = 'PLAY';
       modeModal.style.display = 'none';
       setupHandPieces();
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 標準)';
+      statusEl.textContent = '対局開始 - あなたの手番（白）';
+      doneBtn.style.display = 'none';
+      updateUndoButtonUI();
+    });
+
+    btnVsCPUHard.addEventListener('click', () => {
+      isVsCPU = true;
+      cpuLevel = 'HARD';
+      phase = 'PLAY';
+      modeModal.style.display = 'none';
+      setupHandPieces();
+      setupBeginnerLayout();
+      isPlayer1Turn = true;
+      moveHistory = [];
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 最強)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
