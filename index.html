@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>軍儀 3D - GUNGI 3D (Mobile Edition)</title>
+  <style>
+    * { 
+      margin: 0; 
+      padding: 0; 
+      box-sizing: border-box; 
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body, html { 
+      width: 100%; 
+      height: 100%; 
+      overflow: hidden; 
+      background-color: #121212; 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      touch-action: none;
+    }
+    #canvas-container { 
+      width: 100vw; 
+      height: 100vh; 
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+    #info {
+      position: absolute; 
+      top: calc(10px + env(safe-area-inset-top)); 
+      left: 10px; 
+      right: 10px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.82); 
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 12px 16px; 
+      border-radius: 12px;
+      pointer-events: none; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5); 
+      z-index: 10;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    #info h2 { 
+      font-size: 16px; 
+      margin-bottom: 4px; 
+      color: #f0c040; 
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #info p { 
+      font-size: 11px; 
+      color: #bbb; 
+    }
+    #status { 
+      font-weight: bold; 
+      color: #4da6ff; 
+      margin-top: 6px; 
+      font-size: 13px; 
+    }
+    
+    #ui-container {
+      position: absolute; 
+      bottom: calc(20px + env(safe-area-inset-bottom)); 
+      left: 0;
+      right: 0;
+      display: flex; 
+      justify-content: center;
+      gap: 10px; 
+      z-index: 10;
+      pointer-events: auto;
+    }
+    .btn {
+      padding: 12px 28px; 
+      font-size: 15px; 
+      font-weight: bold; 
+      color: #fff;
+      background: #1a73e8; 
+      border: none; 
+      border-radius: 24px; 
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4); 
+      transition: all 0.2s;
+    }
+    .btn:disabled { background: #555; cursor: not-allowed; box-shadow: none; }
+
+    .modal {
+      display: none; 
+      position: absolute; 
+      top: 50%; 
+      left: 50%;
+      transform: translate(-50%, -50%); 
+      width: 88%;
+      max-width: 360px;
+      background: rgba(22, 22, 28, 0.96);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1.5px solid #f0c040; 
+      padding: 20px 18px; 
+      border-radius: 16px;
+      color: #fff; 
+      text-align: center; 
+      box-shadow: 0 12px 32px rgba(0,0,0,0.8); 
+      z-index: 100;
+    }
+    .modal h3 { font-size: 18px; margin-bottom: 12px; color: #f0c040; }
+    .modal-btns { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+    .btn-action {
+      padding: 12px 16px; 
+      font-size: 14px; 
+      font-weight: bold; 
+      border-radius: 10px; 
+      border: none; 
+      cursor: pointer;
+      width: 100%;
+    }
+    .btn-primary { background: #1a73e8; color: white; }
+    .btn-secondary { background: #4a4d52; color: white; }
+    .btn-cpu { background: #e65100; color: white; }
+    .btn-tsuke { background: #2e7d32; color: white; }
+    .btn-take { background: #c62828; color: white; }
+    .btn-negaeri { background: #7b1fa2; color: white; }
+    .btn-cancel { background: #616161; color: white; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+  <div id="info">
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Fan Made</span></h2>
+    <p id="mode-desc">モードを選択してください</p>
+    <div id="status">対局準備中...</div>
+  </div>
+
+  <div id="ui-container">
+    <button id="done-btn" class="btn" style="display: none;">済み（配置完了）</button>
+  </div>
+
+  <!-- モード選択モーダル -->
+  <div id="mode-modal" class="modal" style="display: block;">
+    <h3>対局モード選択</h3>
+    <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦形式を選んでください</p>
+    <div class="modal-btns">
+      <button id="btn-vs-cpu" class="btn-action btn-cpu">1人プレイ（vs CPU）</button>
+      <button id="btn-vs-human" class="btn-action btn-primary">2人プレイ（対人戦）</button>
+    </div>
+  </div>
+
+  <!-- アクション選択モーダル -->
+  <div id="action-modal" class="modal">
+    <h3>行動を選択</h3>
+    <div class="modal-btns">
+      <button id="btn-tsuke" class="btn-action btn-tsuke">ツケる（重ねる）</button>
+      <button id="btn-take" class="btn-action btn-take">取る（相手駒除去）</button>
+      <button id="btn-negaeri" class="btn-action btn-negaeri" style="display: none;">寝返り（全交換）</button>
+      <button id="btn-cancel" class="btn-action btn-cancel">キャンセル</button>
+    </div>
+  </div>
+
+  <!-- 決着勝敗ダイアログ -->
+  <div id="win-modal" class="modal">
+    <h3 id="win-title" style="font-size: 22px; color: #f0c040;">決着！</h3>
+    <p id="win-desc" style="font-size: 14px; margin: 10px 0;"></p>
+    <div class="modal-btns">
+      <button onclick="location.reload()" class="btn-action btn-primary">もう一度遊ぶ</button>
+    </div>
+  </div>
+
+  <div id="canvas-container"></div>
+
+  <script>
+    // --- 1. セットアップ ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x121216);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+    const CAM_POS_P1 = new THREE.Vector3(-11.5, 11.5, 11.5);
+    const CAM_POS_P2 = new THREE.Vector3(11.5, 11.5, -11.5);
+
+    camera.position.copy(CAM_POS_P1);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 0, 0);
+
+    // --- 2. カメラアニメーション ---
+    let isAnimatingCamera = false;
+    let cameraStartPos = new THREE.Vector3();
+    let cameraTargetPos = new THREE.Vector3();
+    let cameraAnimProgress = 0;
+    const CAMERA_ANIM_DURATION = 1.2;
+
+    function animateCameraTo(targetPos) {
+      cameraStartPos.copy(camera.position);
+      cameraTargetPos.copy(targetPos);
+      cameraAnimProgress = 0;
+      isAnimatingCamera = true;
+      controls.enabled = false;
+    }
+
+    function easeInOutCubic(t) {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    // --- 3. ライティング ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    dirLight.position.set(6, 12, 6);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 1024;
+    dirLight.shadow.mapSize.height = 1024;
+    scene.add(dirLight);
+
+    const subLight = new THREE.DirectionalLight(0x6699ff, 0.3);
+    subLight.position.set(-6, 8, -6);
+    scene.add(subLight);
+
+    // --- 4. ゲーム状態管理 ---
+    let isPlayer1Turn = true;
+    let isVsCPU = false;
+    let isCPUThinking = false;
+    let phase = 'INIT';
+    let p1Done = false;
+    let p2Done = false;
+    let p1SuiPlaced = false;
+    let p2SuiPlaced = false;
+
+    // --- 5. 盤面生成 ---
+    const BOARD_SIZE = 9;
+    const SQUARE_SIZE = 1;
+    const PIECE_HEIGHT = 0.22;
+
+    const boardGroup = new THREE.Group();
+    const squareMeshes = [];
+
+    for (let x = 0; x < BOARD_SIZE; x++) {
+      for (let z = 0; z < BOARD_SIZE; z++) {
+        const geometry = new THREE.BoxGeometry(SQUARE_SIZE * 0.95, 0.12, SQUARE_SIZE * 0.95);
+        const isEven = (x + z) % 2 === 0;
+        
+        const material = new THREE.MeshStandardMaterial({
+          color: isEven ? 0xa87d48 : 0x946b38,
+          roughness: 0.7
+        });
+
+        const square = new THREE.Mesh(geometry, material);
+        square.receiveShadow = true;
+        square.position.set(
+          (x - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE,
+          0,
+          (z - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE
+        );
+        
+        square.userData = { gridX: x, gridZ: z, isSquare: true };
+        
+        boardGroup.add(square);
+        squareMeshes.push(square);
+      }
+    }
+
+    const baseGeometry = new THREE.BoxGeometry(BOARD_SIZE * SQUARE_SIZE + 0.3, 0.25, BOARD_SIZE * SQUARE_SIZE + 0.3);
+    const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x3d1a0a, roughness: 0.5 });
+    const base = new THREE.Mesh(baseGeometry, baseMaterial);
+    base.position.y = -0.12;
+    base.receiveShadow = true;
+    boardGroup.add(base);
+
+    scene.add(boardGroup);
+
+    // --- ハイライトメッシュ ---
+    const highlightGroup = new THREE.Group();
+    scene.add(highlightGroup);
+
+    function clearHighlights() {
+      while(highlightGroup.children.length > 0){
+        highlightGroup.remove(highlightGroup.children[0]);
+      }
+    }
+
+    function addHighlight(gridX, gridZ, levelColor) {
+      let colorHex = 0x00d2ff;
+      if (levelColor === 2) colorHex = 0x0044ff;
+      if (levelColor === 3) colorHex = 0x00c853;
+      if (levelColor === 0) colorHex = 0xff3333;
+
+      const geo = new THREE.PlaneGeometry(SQUARE_SIZE * 0.92, SQUARE_SIZE * 0.92);
+      const mat = new THREE.MeshBasicMaterial({
+        color: colorHex,
+        transparent: true,
+        opacity: levelColor === 3 ? 0.8 : 0.65,
+        side: THREE.DoubleSide
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.rotation.x = Math.PI / 2;
+      
+      const worldX = (gridX - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
+      const worldZ = (gridZ - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
+      
+      const stackHeight = boardData[gridX][gridZ].length;
+      mesh.position.set(worldX, 0.07 + stackHeight * PIECE_HEIGHT, worldZ);
+      
+      highlightGroup.add(mesh);
+    }
+
+    // --- 6. 文字描画テクスチャ ＆ 駒生成 ---
+    function createPieceTexture(text, isPlayer1) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = isPlayer1 ? '#f4f1ea' : '#1a1a1c';
+      ctx.fillRect(0, 0, 256, 256);
+
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = isPlayer1 ? '#333333' : '#d4af37';
+      ctx.beginPath();
+      ctx.arc(128, 128, 116, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = isPlayer1 ? '#111111' : '#f0c040';
+      ctx.font = 'bold 120px "serif", "Hiragino Mincho ProN", "Yu Mincho"';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 128, 134);
+
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    let boardData = Array(BOARD_SIZE).fill(null).map(() => 
+      Array(BOARD_SIZE).fill(null).map(() => [])
+    );
+
+    function createPieceMesh(name, isPlayer1) {
+      const group = new THREE.Group();
+      const geo = new THREE.CylinderGeometry(0.38, 0.4, PIECE_HEIGHT, 32);
+      const topTexture = createPieceTexture(name, isPlayer1);
+
+      const sideMat = new THREE.MeshStandardMaterial({
+        color: isPlayer1 ? 0xf4f1ea : 0x1a1a1c,
+        roughness: isPlayer1 ? 0.3 : 0.6,
+        metalness: 0.05
+      });
+
+      const topMat = new THREE.MeshStandardMaterial({
+        map: topTexture,
+        roughness: isPlayer1 ? 0.3 : 0.6,
+        metalness: 0.05
+      });
+
+      const materials = [sideMat, topMat, sideMat];
+      const pieceMesh = new THREE.Mesh(geo, materials);
+      pieceMesh.castShadow = true;
+      pieceMesh.receiveShadow = true;
+      pieceMesh.rotation.y = isPlayer1 ? Math.PI / 2 : -Math.PI / 2;
+
+      group.add(pieceMesh);
+
+      if (isPlayer1) {
+        const topRingGeo = new THREE.TorusGeometry(0.385, 0.018, 8, 32);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x333333 });
+        const topRing = new THREE.Mesh(topRingGeo, ringMat);
+        topRing.rotation.x = Math.PI / 2;
+        topRing.position.y = PIECE_HEIGHT / 2;
+        group.add(topRing);
+
+        const bottomRingGeo = new THREE.TorusGeometry(0.405, 0.018, 8, 32);
+        const bottomRing = new THREE.Mesh(bottomRingGeo, ringMat);
+        bottomRing.rotation.x = Math.PI / 2;
+        bottomRing.position.y = -PIECE_HEIGHT / 2;
+        group.add(bottomRing);
+      }
+
+      return group;
+    }
+
+    // --- 7. 手駒管理 ---
+    const PIECE_SET = [
+      '帥', '大', '中', '小', '小', 
+      '兵', '兵', '兵', '兵', '槍', 
+      '槍', '槍', '弓', '弓', '砦', 
+      '砦', '謀', '砲', '筒', '馬', 
+      '馬', '侍', '侍', '忍', '忍'
+    ];
+
+    let p1HandPieces = [];
+    let p2HandPieces = [];
+
+    function setupHandPieces() {
+      p1HandPieces = [];
+      p2HandPieces = [];
+
+      PIECE_SET.forEach((name) => {
+        const mesh = createPieceMesh(name, true);
+        scene.add(mesh);
+        const pieceData = { name, isPlayer1: true, mesh, gridX: -1, gridZ: -1, inHand: true };
+        mesh.userData = { pieceData, isPiece: true };
+        p1HandPieces.push(pieceData);
+      });
+
+      PIECE_SET.forEach((name) => {
+        const mesh = createPieceMesh(name, false);
+        scene.add(mesh);
+        const pieceData = { name, isPlayer1: false, mesh, gridX: -1, gridZ: -1, inHand: true };
+        mesh.userData = { pieceData, isPiece: true };
+        p2HandPieces.push(pieceData);
+      });
+
+      arrangeHandPieces();
+    }
+
+    function arrangeHandPieces() {
+      const p1ActiveHand = p1HandPieces.filter(p => p.inHand);
+      p1ActiveHand.forEach((p, index) => {
+        const row = Math.floor(index / 13);
+        const col = index % 13;
+        p.mesh.position.set(-5.4 + col * 0.9, PIECE_HEIGHT / 2, 5.2 + row * 0.95);
+      });
+
+      const p2ActiveHand = p2HandPieces.filter(p => p.inHand);
+      p2ActiveHand.forEach((p, index) => {
+        const row = Math.floor(index / 13);
+        const col = index % 13;
+        p.mesh.position.set(5.4 - col * 0.9, PIECE_HEIGHT / 2, -5.2 - row * 0.95);
+      });
+    }
+
+    function placePieceFromHand(isP1, name, gridX, gridZ) {
+      const handList = isP1 ? p1HandPieces : p2HandPieces;
+      const pieceData = handList.find(p => p.inHand && p.name === name);
+      if (!pieceData) return;
+
+      pieceData.inHand = false;
+      const stack = boardData[gridX][gridZ];
+      const layer = stack.length;
+      stack.push(pieceData);
+
+      pieceData.gridX = gridX;
+      pieceData.gridZ = gridZ;
+
+      const worldX = (gridX - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
+      const worldZ = (gridZ - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
+      const worldY = 0.06 + (PIECE_HEIGHT / 2) + (layer * PIECE_HEIGHT);
+
+      pieceData.mesh.position.set(worldX, worldY, worldZ);
+    }
+
+    function setupBeginnerLayout() {
+      // プレイヤー1
+      placePieceFromHand(true, '大', 3, 8);
+      placePieceFromHand(true, '帥', 4, 8);
+      placePieceFromHand(true, '中', 5, 8);
+
+      placePieceFromHand(true, '忍', 1, 7);
+      placePieceFromHand(true, '弓', 2, 7);
+      placePieceFromHand(true, '槍', 4, 7);
+      placePieceFromHand(true, '弓', 6, 7);
+      placePieceFromHand(true, '馬', 7, 7);
+
+      placePieceFromHand(true, '兵', 0, 6);
+      placePieceFromHand(true, '砦', 2, 6);
+      placePieceFromHand(true, '侍', 3, 6);
+      placePieceFromHand(true, '兵', 4, 6);
+      placePieceFromHand(true, '侍', 5, 6);
+      placePieceFromHand(true, '砦', 6, 6);
+      placePieceFromHand(true, '兵', 8, 6);
+
+      // プレイヤー2
+      placePieceFromHand(false, '中', 3, 0);
+      placePieceFromHand(false, '帥', 4, 0);
+      placePieceFromHand(false, '大', 5, 0);
+
+      placePieceFromHand(false, '馬', 1, 1);
+      placePieceFromHand(false, '弓', 2, 1);
+      placePieceFromHand(false, '槍', 4, 1);
+      placePieceFromHand(false, '弓', 6, 1);
+      placePieceFromHand(false, '忍', 7, 1);
+
+      placePieceFromHand(false, '兵', 0, 2);
+      placePieceFromHand(false, '砦', 2, 2);
+      placePieceFromHand(false, '侍', 3, 2);
+      placePieceFromHand(false, '兵', 4, 2);
+      placePieceFromHand(false, '侍', 5, 2);
+      placePieceFromHand(false, '砦', 6, 2);
+      placePieceFromHand(false, '兵', 8, 2);
+
+      arrangeHandPieces();
+    }
+
+    function getFrontlineZ(isP1) {
+      let frontline = isP1 ? 8 : 0;
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        for (let z = 0; z < BOARD_SIZE; z++) {
+          const stack = boardData[x][z];
+          if (stack.length > 0) {
+            const topPiece = stack[stack.length - 1];
+            if (topPiece.isPlayer1 === isP1) {
+              if (isP1 && z < frontline) frontline = z;
+              if (!isP1 && z > frontline) frontline = z;
+            }
+          }
+        }
+      }
+      return frontline;
+    }
+
+    // --- 8. 移動計算 ---
+    function getValidMoves(pieceData) {
+      const validMoves = [];
+      if (pieceData.inHand) {
+        for (let x = 0; x < BOARD_SIZE; x++) {
+          for (let z = 0; z < BOARD_SIZE; z++) {
+            if (phase === 'SETUP') {
+              const isValidZone = pieceData.isPlayer1 ? (z >= 6 && z <= 8) : (z >= 0 && z <= 2);
+              if (isValidZone && boardData[x][z].length < 3) {
+                validMoves.push({ x, z, levelColor: 1 });
+              }
+            } else if (phase === 'PLAY') {
+              const frontlineZ = getFrontlineZ(pieceData.isPlayer1);
+              const isValidArataZ = pieceData.isPlayer1 ? (z >= frontlineZ) : (z <= frontlineZ);
+              const stack = boardData[x][z];
+              const isEnemyTop = stack.length > 0 && stack[stack.length - 1].isPlayer1 !== pieceData.isPlayer1;
+              if (isValidArataZ && stack.length < 3 && !isEnemyTop) {
+                validMoves.push({ x, z, levelColor: 1 });
+              }
+            }
+          }
+        }
+        return validMoves;
+      }
+
+      const cx = pieceData.gridX;
+      const cz = pieceData.gridZ;
+      const stack = boardData[cx][cz];
+      const level = stack.length;
+      const dir = pieceData.isPlayer1 ? -1 : 1;
+
+      const addPath = (dx, dz, targetStep, reqLevel, colorTag) => {
+        if (reqLevel !== 0 && level < reqLevel) return;
+        const normX = dx === 0 ? 0 : dx / Math.abs(dx);
+        const normZ = dz === 0 ? 0 : dz / Math.abs(dz);
+        const distance = Math.max(Math.abs(dx), Math.abs(dz));
+
+        for (let i = 1; i < distance; i++) {
+          const midX = cx + normX * i;
+          const midZ = cz + normZ * i;
+          if (midX < 0 || midX >= BOARD_SIZE || midZ < 0 || midZ >= BOARD_SIZE) return;
+          if (boardData[midX][midZ].length > 0) return;
+        }
+
+        const tx = cx + dx;
+        const tz = cz + dz;
+        if (tx >= 0 && tx < BOARD_SIZE && tz >= 0 && tz < BOARD_SIZE) {
+          validMoves.push({ x: tx, z: tz, levelColor: colorTag });
+        }
+      };
+
+      const addRay = (dx, dz, maxSteps, reqLevel, colorTag) => {
+        if (reqLevel !== 0 && level < reqLevel) return;
+        for (let i = 1; i <= maxSteps; i++) {
+          const tx = cx + dx * i;
+          const tz = cz + dz * i;
+          if (tx < 0 || tx >= BOARD_SIZE || tz < 0 || tz >= BOARD_SIZE) break;
+
+          validMoves.push({ x: tx, z: tz, levelColor: colorTag });
+          if (boardData[tx][tz].length > 0) break;
+        }
+      };
+
+      const addJumpByOffset = (dx, dz, colorTag) => {
+        const tx = cx + dx;
+        const tz = cz + dz;
+        if (tx >= 0 && tx < BOARD_SIZE && tz >= 0 && tz < BOARD_SIZE) {
+          const normX = dx === 0 ? 0 : dx / Math.abs(dx);
+          const normZ = dz === 0 ? 0 : dz / Math.abs(dz);
+          const dist = Math.max(Math.abs(dx), Math.abs(dz));
+
+          const midX = cx + normX * (dist - 1);
+          const midZ = cz + normZ * (dist - 1);
+          if (midX >= 0 && midX < BOARD_SIZE && midZ >= 0 && midZ < BOARD_SIZE) {
+            const midStack = boardData[midX][midZ];
+            if (midStack.length > 0 && midStack.length <= level) {
+              validMoves.push({ x: tx, z: tz, levelColor: colorTag });
+            }
+          }
+        }
+      };
+
+      const name = pieceData.name;
+
+      if (name === '帥') {
+        const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
+        if (level >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
+        if (level >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+      }
+      else if (name === '大') {
+        const diagDirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
+        diagDirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
+        if (level >= 2) diagDirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
+        if (level >= 3) diagDirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+        [[0,1],[0,-1],[-1,0],[1,0]].forEach(([dx,dz]) => addRay(dx, dz, 8, 0, 0));
+      }
+      else if (name === '中') {
+        const orthoDirs = [[0,1],[0,-1],[-1,0],[1,0]];
+        orthoDirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
+        if (level >= 2) orthoDirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
+        if (level >= 3) orthoDirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+        [[-1,1],[1,1],[-1,-1],[1,-1]].forEach(([dx,dz]) => addRay(dx, dz, 8, 0, 0));
+      }
+      else if (name === '小') {
+        const dirs = [[0,dir],[-1,dir],[1,dir],[-1,0],[1,0],[0,-dir]];
+        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
+        if (level >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
+        if (level >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+      }
+      else if (name === '侍') {
+        const dirs = [[0,dir],[-1,dir],[1,dir],[0,-dir]];
+        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
+        if (level >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
+        if (level >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+      }
+      else if (name === '槍') {
+        addPath(0, dir, 1, 1, 1);
+        addPath(-1, dir, 1, 1, 1);
+        addPath(1, dir, 1, 1, 1);
+        addPath(0, -dir, 1, 1, 1);
+        addPath(0, dir*2, 2, 1, 1);
+        if (level >= 2) {
+          addPath(-2, dir*2, 2, 2, 2); addPath(2, dir*2, 2, 2, 2);
+          addPath(0, -dir*2, 2, 2, 2); addPath(0, dir*3, 3, 2, 2);
+        }
+        if (level >= 3) {
+          addPath(-3, dir*3, 3, 3, 3); addPath(3, dir*3, 3, 3, 3);
+          addPath(0, -dir*3, 3, 3, 3); addPath(0, dir*4, 4, 3, 3);
+        }
+      }
+      else if (name === '馬') {
+        addPath(-1, 0, 1, 1, 1); addPath(1, 0, 1, 1, 1);
+        addPath(0, dir, 1, 1, 1); addPath(0, dir*2, 2, 1, 1);
+        addPath(0, -dir, 1, 1, 1); addPath(0, -dir*2, 2, 1, 1);
+        if (level >= 2) {
+          addPath(-2, 0, 2, 2, 2); addPath(2, 0, 2, 2, 2);
+          addPath(0, dir*3, 3, 2, 2); addPath(0, -dir*3, 3, 2, 2);
+        }
+        if (level >= 3) {
+          addPath(-3, 0, 3, 3, 3); addPath(3, 0, 3, 3, 3);
+          addPath(0, dir*4, 4, 3, 3); addPath(0, -dir*4, 4, 3, 3);
+        }
+      }
+      else if (name === '忍') {
+        const dirs1 = [[-1,dir],[1,dir],[-1,-dir],[1,-dir]];
+        dirs1.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
+        const dirs2 = [[-2,dir*2],[2,dir*2],[-2,-dir*2],[2,-dir*2]];
+        dirs2.forEach(([dx,dz]) => addPath(dx, dz, 2, 1, 1));
+        if (level >= 2) [[-3,dir*3],[3,dir*3],[-3,-dir*3],[3,-dir*3]].forEach(([dx,dz]) => addPath(dx, dz, 3, 2, 2));
+        if (level >= 3) [[-4,dir*4],[4,dir*4],[-4,-dir*4],[4,-dir*4]].forEach(([dx,dz]) => addPath(dx, dz, 4, 3, 3));
+      }
+      else if (name === '砦') {
+        const dirs = [[0,dir],[-1,0],[1,0],[-1,-dir],[1,-dir]];
+        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
+        if (level >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
+        if (level >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+      }
+      else if (name === '兵') {
+        const dirs = [[0,dir],[0,-dir]];
+        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
+        if (level >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
+        if (level >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+      }
+      else if (name === '砲') {
+        addPath(-1, 0, 1, 1, 1); addPath(1, 0, 1, 1, 1);
+        addPath(0, -dir, 1, 1, 1); addPath(0, dir*3, 3, 1, 1);
+        if (level >= 2) {
+          addPath(-2, 0, 2, 2, 2); addPath(2, 0, 2, 2, 2);
+          addPath(0, -dir*2, 2, 2, 2); addPath(0, dir*4, 4, 2, 2);
+        }
+        if (level >= 3) {
+          addPath(-3, 0, 3, 3, 3); addPath(3, 0, 3, 3, 3);
+          addPath(0, -dir*3, 3, 3, 3); addPath(0, dir*5, 5, 3, 3);
+        }
+        if (level === 1) addJumpByOffset(0, dir*3, 0);
+        else if (level === 2) addJumpByOffset(0, dir*4, 0);
+        else if (level === 3) addJumpByOffset(0, dir*5, 0);
+      }
+      else if (name === '弓') {
+        addPath(-1, dir*2, 2, 1, 1); addPath(0, dir*2, 2, 1, 1);
+        addPath(1, dir*2, 2, 1, 1); addPath(0, -dir, 1, 1, 1);
+        if (level >= 2) [[-2,dir*3],[0,dir*3],[2,dir*3],[0,-dir*2]].forEach(([dx,dz]) => addPath(dx, dz, 3, 2, 2));
+        if (level >= 3) [[-3,dir*4],[0,dir*4],[3,dir*4],[0,-dir*3]].forEach(([dx,dz]) => addPath(dx, dz, 4, 3, 3));
+
+        if (level === 1) { addJumpByOffset(-1, dir*2, 0); addJumpByOffset(0, dir*2, 0); addJumpByOffset(1, dir*2, 0); }
+        else if (level === 2) { addJumpByOffset(-2, dir*3, 0); addJumpByOffset(0, dir*3, 0); addJumpByOffset(2, dir*3, 0); }
+        else if (level === 3) { addJumpByOffset(-3, dir*4, 0); addJumpByOffset(0, dir*4, 0); addJumpByOffset(3, dir*4, 0); }
+      }
+      else if (name === '筒') {
+        addPath(0, dir*2, 2, 1, 1); addPath(-1, -dir, 1, 1, 1); addPath(1, -dir, 1, 1, 1);
+        if (level >= 2) [[0,dir*3],[-2,-dir*2],[2,-dir*2]].forEach(([dx,dz]) => addPath(dx, dz, 3, 2, 2));
+        if (level >= 3) [[0,dir*4],[-3,-dir*3],[3,-dir*3]].forEach(([dx,dz]) => addPath(dx, dz, 4, 3, 3));
+
+        if (level === 1) addJumpByOffset(0, dir*2, 0);
+        else if (level === 2) addJumpByOffset(0, dir*3, 0);
+        else if (level === 3) addJumpByOffset(0, dir*4, 0);
+      }
+      else if (name === '謀') {
+        const dirs = [[-1,dir],[1,dir],[0,-dir]];
+        dirs.forEach(([dx,dz]) => addPath(dx, dz, 1, 1, 1));
+        if (level >= 2) dirs.forEach(([dx,dz]) => addPath(dx*2, dz*2, 2, 2, 2));
+        if (level >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
+      }
+
+      return validMoves;
+    }
+
+    function checkCanNegaeri(pieceData, targetX, targetZ) {
+      if (pieceData.name !== '謀') return false;
+      const targetStack = boardData[targetX][targetZ];
+      if (targetStack.length === 0) return false;
+
+      const enemyPiecesInStack = targetStack.filter(p => p.isPlayer1 !== isPlayer1Turn);
+      if (enemyPiecesInStack.length === 0) return false;
+
+      const enemyCounts = {};
+      enemyPiecesInStack.forEach(p => { enemyCounts[p.name] = (enemyCounts[p.name] || 0) + 1; });
+
+      const myHand = isPlayer1Turn ? p1HandPieces.filter(p => p.inHand) : p2HandPieces.filter(p => p.inHand);
+      const myHandCounts = {};
+      myHand.forEach(p => { myHandCounts[p.name] = (myHandCounts[p.name] || 0) + 1; });
+
+      for (const name in enemyCounts) {
+        if (!myHandCounts[name] || myHandCounts[name] < enemyCounts[name]) return false;
+      }
+      return true;
+    }
+
+    // --- 9. 思考型AI（CPU対戦ロジック） ---
+    const PIECE_VALUES = {
+      '帥': 9999, '大': 50, '中': 40, '侍': 20, '馬': 20, 
+      '忍': 15, '槍': 12, '弓': 10, '砲': 10, '筒': 10, 
+      '砦': 8, '兵': 5, '小': 5, '謀': 15
+    };
+
+    function evaluateCandidateMove(pieceData, targetX, targetZ) {
+      let score = 0;
+      const targetStack = boardData[targetX][targetZ];
+      const targetHeight = targetStack.length;
+
+      // 1. 相手の駒を取る評価
+      if (targetHeight > 0) {
+        const topPiece = targetStack[targetHeight - 1];
+        if (topPiece.isPlayer1 !== pieceData.isPlayer1) {
+          score += (PIECE_VALUES[topPiece.name] || 10) * 10;
+        }
+      }
+
+      // 2. ツケ（重ねる）評価（高レベルほど高い価値）
+      if (targetHeight > 0) {
+        score += (targetHeight + 1) * 8;
+      }
+
+      // 3. 前進評価（相手の陣地へ進む）
+      score += targetZ * 3;
+
+      // 4. 手駒を新しく打つよりは盤面の駒を動かす方が優先度高め
+      if (!pieceData.inHand) {
+        score += 5;
+      }
+
+      // 5. ランダム性の付与（少し人間らしい揺らぎ）
+      score += Math.random() * 4;
+
+      return score;
+    }
+
+    function makeCPUMove() {
+      if (winModal.style.display === 'block') return;
+
+      const candidates = [];
+
+      // 1. 盤面上の全CPU駒の可能手をリスト化
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        for (let z = 0; z < BOARD_SIZE; z++) {
+          const stack = boardData[x][z];
+          if (stack.length > 0) {
+            const topPiece = stack[stack.length - 1];
+            if (!topPiece.isPlayer1) { // CPU（黒）
+              const validMoves = getValidMoves(topPiece);
+              validMoves.forEach(m => {
+                const score = evaluateCandidateMove(topPiece, m.x, m.z);
+                candidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score });
+              });
+            }
+          }
+        }
+      }
+
+      // 2. 手駒から打てる手も追加
+      p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
+        const validMoves = getValidMoves(handPiece);
+        validMoves.forEach(m => {
+          const score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
+          candidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score });
+        });
+      });
+
+      if (candidates.length === 0) return;
+
+      // 最も得点の高い手を選択
+      candidates.sort((a, b) => b.score - a.score);
+      const bestMove = candidates[0];
+
+      const targetStack = boardData[bestMove.targetX][bestMove.targetZ];
+      const hasEnemyTop = targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1;
+      
+      const actionType = hasEnemyTop ? 'TAKE' : 'TSUKE';
+      
+      executeMove(bestMove.pieceData, bestMove.targetX, bestMove.targetZ, actionType);
+      isCPUThinking = false;
+    }
+
+    // --- 10. タッチ / クリック処理 ---
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let selectedPieceData = null;
+    let originalEmissive = null;
+
+    const statusEl = document.getElementById('status');
+    const doneBtn = document.getElementById('done-btn');
+    const modeDesc = document.getElementById('mode-desc');
+
+    const modeModal = document.getElementById('mode-modal');
+    const btnVsCPU = document.getElementById('btn-vs-cpu');
+    const btnVsHuman = document.getElementById('btn-vs-human');
+
+    const actionModal = document.getElementById('action-modal');
+    const btnTsuke = document.getElementById('btn-tsuke');
+    const btnTake = document.getElementById('btn-take');
+    const btnNegaeri = document.getElementById('btn-negaeri');
+    const btnCancel = document.getElementById('btn-cancel');
+
+    const winModal = document.getElementById('win-modal');
+    const winTitle = document.getElementById('win-title');
+    const winDesc = document.getElementById('win-desc');
+
+    let pendingMove = null;
+
+    btnVsCPU.addEventListener('click', () => {
+      isVsCPU = true;
+      modeModal.style.display = 'none';
+      setupHandPieces();
+      setupBeginnerLayout();
+      phase = 'PLAY';
+      isPlayer1Turn = true;
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU)';
+      statusEl.textContent = '対局開始 - あなたの手番（白）';
+      doneBtn.style.display = 'none';
+    });
+
+    btnVsHuman.addEventListener('click', () => {
+      isVsCPU = false;
+      modeModal.style.display = 'none';
+      setupHandPieces();
+      setupBeginnerLayout();
+      phase = 'PLAY';
+      isPlayer1Turn = true;
+      modeDesc.textContent = '対局モード: 2人プレイ';
+      statusEl.textContent = '対局開始 - 手番: 白（先手）';
+      doneBtn.style.display = 'none';
+    });
+
+    function getIntersectedPieceData(intersects) {
+      for (let i = 0; i < intersects.length; i++) {
+        let obj = intersects[i].object;
+        while (obj) {
+          if (obj.userData && obj.userData.isPiece) {
+            return { pieceData: obj.userData.pieceData, mesh: obj };
+          }
+          obj = obj.parent;
+        }
+      }
+      return null;
+    }
+
+    function handlePointerInput(clientX, clientY) {
+      if (modeModal.style.display === 'block' || actionModal.style.display === 'block' || winModal.style.display === 'block' || isAnimatingCamera || isCPUThinking) return;
+
+      if (isVsCPU && !isPlayer1Turn) return; // CPUの手番中は操作不能
+
+      mouse.x = (clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+
+      const allObjects = [];
+      scene.traverse(child => {
+        if (child.userData && child.userData.isPiece) {
+          allObjects.push(child);
+        }
+      });
+
+      const pieceIntersects = raycaster.intersectObjects(allObjects, true);
+      const pieceHit = getIntersectedPieceData(pieceIntersects);
+
+      if (pieceHit) {
+        const clickedPiece = pieceHit.pieceData;
+
+        if (selectedPieceData) {
+          if (selectedPieceData === clickedPiece || (!selectedPieceData.inHand && selectedPieceData.gridX === clickedPiece.gridX && selectedPieceData.gridZ === clickedPiece.gridZ)) {
+            deselect();
+            return;
+          }
+          handleMoveAttempt(selectedPieceData, clickedPiece.gridX, clickedPiece.gridZ);
+          return;
+        }
+
+        if (clickedPiece.isPlayer1 !== isPlayer1Turn) {
+          statusEl.textContent = `※現在手番は [${isPlayer1Turn ? '白' : '黒'}] です！`;
+          return;
+        }
+
+        if (!clickedPiece.inHand) {
+          const stack = boardData[clickedPiece.gridX][clickedPiece.gridZ];
+          if (stack[stack.length - 1] !== clickedPiece) {
+            statusEl.textContent = '※一番上の駒しか動かせません！';
+            return;
+          }
+        }
+
+        selectPiece(clickedPiece);
+        return;
+      }
+
+      const squareIntersects = raycaster.intersectObjects(squareMeshes);
+      if (squareIntersects.length > 0) {
+        const squareObj = squareIntersects[0].object;
+        const { gridX, gridZ } = squareObj.userData;
+
+        if (selectedPieceData) {
+          if (!selectedPieceData.inHand && selectedPieceData.gridX === gridX && selectedPieceData.gridZ === gridZ) {
+            deselect();
+            return;
+          }
+          handleMoveAttempt(selectedPieceData, gridX, gridZ);
+        }
+      }
+    }
+
+    window.addEventListener('pointerdown', (e) => {
+      if (e.target.tagName === 'BUTTON' || e.target.closest('.modal')) return;
+      handlePointerInput(e.clientX, e.clientY);
+    });
+
+    function selectPiece(pieceData) {
+      deselect();
+      selectedPieceData = pieceData;
+      
+      const pieceMesh = pieceData.mesh.children[0];
+      if (pieceMesh && pieceMesh.material) {
+        const mat = Array.isArray(pieceMesh.material) ? pieceMesh.material[0] : pieceMesh.material;
+        if (mat.emissive) {
+          originalEmissive = mat.emissive.getHex();
+          mat.emissive.setHex(0x0066ff);
+        }
+      }
+
+      statusEl.textContent = `選択中: [${pieceData.isPlayer1 ? '白' : '黒'}] ${pieceData.name} ${pieceData.inHand ? '(持ち駒)' : ''}`;
+
+      const validMoves = getValidMoves(pieceData);
+      validMoves.forEach(m => addHighlight(m.x, m.z, m.levelColor));
+    }
+
+    function deselect() {
+      if (selectedPieceData) {
+        const pieceMesh = selectedPieceData.mesh.children[0];
+        const mat = Array.isArray(pieceMesh.material) ? pieceMesh.material[0] : pieceMesh.material;
+        if (mat && mat.emissive) {
+          mat.emissive.setHex(originalEmissive || 0x000000);
+        }
+        selectedPieceData = null;
+      }
+      clearHighlights();
+    }
+
+    function handleMoveAttempt(pieceData, targetX, targetZ) {
+      const targetStack = boardData[targetX][targetZ];
+      const sourceStack = pieceData.inHand ? null : boardData[pieceData.gridX][pieceData.gridZ];
+      
+      const movingHeight = pieceData.inHand ? 1 : sourceStack.length;
+      const targetHeight = targetStack.length;
+
+      const validMoves = getValidMoves(pieceData);
+      const isValidDestination = validMoves.some(m => m.x === targetX && m.z === targetZ);
+
+      if (!isValidDestination) {
+        statusEl.textContent = '※そこへは移動できません';
+        return;
+      }
+
+      if (targetHeight > 0 && targetStack.some(p => p.name === '帥')) {
+        const topPiece = targetStack[targetHeight - 1];
+        if (topPiece.isPlayer1 !== isPlayer1Turn) {
+          if (topPiece === targetStack[targetHeight - 1]) {
+             executeMove(pieceData, targetX, targetZ, 'TAKE');
+             return;
+          }
+        } else {
+          statusEl.textContent = '※『帥』の上に重ねられません';
+          deselect();
+          return;
+        }
+      }
+
+      const canNegaeri = checkCanNegaeri(pieceData, targetX, targetZ);
+      const hasEnemyTop = targetStack.length > 0 && targetStack[targetHeight - 1].isPlayer1 !== isPlayer1Turn;
+
+      if (hasEnemyTop || canNegaeri) {
+        pendingMove = { pieceData, targetX, targetZ };
+        btnTsuke.disabled = (targetHeight >= 3);
+        btnTake.disabled = !hasEnemyTop; 
+        btnNegaeri.style.display = canNegaeri ? 'block' : 'none';
+
+        actionModal.style.display = 'block';
+        return;
+      }
+
+      if (targetHeight >= 3) {
+        statusEl.textContent = '※これ以上重ねられません（最大3層）';
+        deselect();
+        return;
+      }
+
+      executeMove(pieceData, targetX, targetZ, 'TSUKE');
+    }
+
+    btnTsuke.addEventListener('click', () => {
+      if (pendingMove) {
+        executeMove(pendingMove.pieceData, pendingMove.targetX, pendingMove.targetZ, 'TSUKE');
+        closeModal();
+      }
+    });
+
+    btnTake.addEventListener('click', () => {
+      if (pendingMove) {
+        executeMove(pendingMove.pieceData, pendingMove.targetX, pendingMove.targetZ, 'TAKE');
+        closeModal();
+      }
+    });
+
+    btnNegaeri.addEventListener('click', () => {
+      if (pendingMove) {
+        executeMove(pendingMove.pieceData, pendingMove.targetX, pendingMove.targetZ, 'NEGAERI');
+        closeModal();
+      }
+    });
+
+    btnCancel.addEventListener('click', closeModal);
+
+    function closeModal() {
+      actionModal.style.display = 'none';
+      pendingMove = null;
+      deselect();
+    }
+
+    function executeMove(pieceData, targetX, targetZ, actionType) {
+      const targetStack = boardData[targetX][targetZ];
+      const sourceStack = pieceData.inHand ? null : boardData[pieceData.gridX][pieceData.gridZ];
+
+      let suiCaptured = false;
+
+      if (actionType === 'TAKE') {
+        const enemyColor = targetStack[targetStack.length - 1].isPlayer1;
+        while (targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1 === enemyColor) {
+          const capturedPiece = targetStack.pop();
+          if (capturedPiece.name === '帥') suiCaptured = true;
+          scene.remove(capturedPiece.mesh);
+        }
+        statusEl.textContent = '相手の駒を取りました！';
+      }
+
+      if (actionType === 'NEGAERI') {
+        const myHand = isPlayer1Turn ? p1HandPieces : p2HandPieces;
+        const enemiesToReplace = targetStack.filter(p => p.isPlayer1 !== isPlayer1Turn);
+
+        enemiesToReplace.forEach(ep => {
+          scene.remove(ep.mesh);
+          if (ep.name === '帥') suiCaptured = true;
+        });
+
+        for (let i = targetStack.length - 1; i >= 0; i--) {
+          if (targetStack[i].isPlayer1 !== isPlayer1Turn) {
+            targetStack.splice(i, 1);
+          }
+        }
+
+        enemiesToReplace.forEach(ep => {
+          const handMatch = myHand.find(hp => hp.inHand && hp.name === ep.name);
+          if (handMatch) {
+            handMatch.inHand = false;
+            handMatch.gridX = targetX;
+            handMatch.gridZ = targetZ;
+            handMatch.isPlayer1 = isPlayer1Turn;
+            targetStack.push(handMatch);
+          }
+        });
+
+        arrangeHandPieces();
+        statusEl.textContent = '『謀』による「寝返り」が発動！';
+      }
+
+      if (pieceData.inHand) {
+        pieceData.inHand = false;
+        if (pieceData.name === '帥') {
+          if (pieceData.isPlayer1) p1SuiPlaced = true;
+          else p2SuiPlaced = true;
+        }
+        arrangeHandPieces();
+      } else {
+        sourceStack.pop();
+      }
+
+      targetStack.push(pieceData);
+
+      pieceData.gridX = targetX;
+      pieceData.gridZ = targetZ;
+
+      targetStack.forEach((p, idx) => {
+        const worldX = (targetX - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
+        const worldZ = (targetZ - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
+        const worldY = 0.06 + (PIECE_HEIGHT / 2) + (idx * PIECE_HEIGHT);
+        p.mesh.position.set(worldX, worldY, worldZ);
+      });
+
+      if (suiCaptured) {
+        const winnerStr = isPlayer1Turn ? (isVsCPU ? 'あなた' : '白（先手）') : (isVsCPU ? 'CPU' : '黒（後手）');
+        winDesc.textContent = `${winnerStr} が『帥』を討ち取り、勝利しました！`;
+        winModal.style.display = 'block';
+        return;
+      }
+
+      deselect();
+      switchTurn();
+    }
+
+    function switchTurn() {
+      isPlayer1Turn = !isPlayer1Turn;
+
+      const targetCamPos = isPlayer1Turn ? CAM_POS_P1 : CAM_POS_P2;
+      
+      // VS CPU時はカメラ固定のままにする
+      if (!isVsCPU) {
+        animateCameraTo(targetCamPos);
+      }
+
+      updateStatusUI();
+
+      // CPU手番処理
+      if (isVsCPU && !isPlayer1Turn) {
+        isCPUThinking = true;
+        statusEl.textContent = 'CPUが思考中...';
+        setTimeout(() => {
+          makeCPUMove();
+        }, 800);
+      }
+    }
+
+    function updateStatusUI() {
+      if (winModal.style.display === 'block') return;
+
+      if (isVsCPU) {
+        const playerStr = isPlayer1Turn ? 'あなた（白）' : 'CPU（黒）';
+        statusEl.textContent = `対局中 - 手番: ${playerStr}`;
+      } else {
+        const playerStr = isPlayer1Turn ? '白（先手）' : '黒（後手）';
+        statusEl.textContent = `対局中 - 手番: ${playerStr}`;
+      }
+    }
+
+    // --- 11. ループ ＆ リサイズ ---
+    const clock = new THREE.Clock();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+
+      if (isAnimatingCamera) {
+        cameraAnimProgress += delta / CAMERA_ANIM_DURATION;
+        if (cameraAnimProgress >= 1) {
+          cameraAnimProgress = 1;
+          isAnimatingCamera = false;
+          controls.enabled = true;
+        }
+
+        const t = easeInOutCubic(cameraAnimProgress);
+        
+        const radius = Math.sqrt(CAM_POS_P1.x ** 2 + CAM_POS_P1.z ** 2);
+        
+        const startAngle = Math.atan2(cameraStartPos.z, cameraStartPos.x);
+        let targetAngle = Math.atan2(cameraTargetPos.z, cameraTargetPos.x);
+
+        if (targetAngle - startAngle > Math.PI) targetAngle -= Math.PI * 2;
+        if (targetAngle - startAngle < -Math.PI) targetAngle += Math.PI * 2;
+
+        const currentAngle = startAngle + (targetAngle - startAngle) * t;
+
+        camera.position.x = radius * Math.cos(currentAngle);
+        camera.position.z = radius * Math.sin(currentAngle);
+        camera.position.y = cameraStartPos.y + (cameraTargetPos.y - cameraStartPos.y) * t;
+
+        camera.lookAt(0, 0, 0);
+      } else {
+        controls.update();
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
