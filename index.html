@@ -241,7 +241,7 @@
     // --- 4. ゲーム状態管理 ＆ 履歴 ---
     let isPlayer1Turn = true;
     let isVsCPU = false;
-    let cpuLevel = 'NORMAL'; // 'NORMAL' or 'HARD'
+    let cpuLevel = 'NORMAL';
     let isCPUThinking = false;
     let phase = 'INIT'; 
     let p1Done = false;
@@ -250,6 +250,7 @@
     let p2SuiPlaced = false;
 
     let moveHistory = [];
+    let lastMoveEvalText = '';
 
     // --- 5. 盤面生成 ---
     const BOARD_SIZE = 9;
@@ -416,18 +417,18 @@
       p1HandPieces = [];
       p2HandPieces = [];
 
-      PIECE_SET.forEach((name) => {
+      PIECE_SET.forEach((name, id) => {
         const mesh = createPieceMesh(name, true);
         scene.add(mesh);
-        const pieceData = { name, isPlayer1: true, mesh, gridX: -1, gridZ: -1, inHand: true };
+        const pieceData = { id: 'p1_' + name + '_' + id, name, isPlayer1: true, mesh, gridX: -1, gridZ: -1, inHand: true };
         mesh.userData = { pieceData, isPiece: true };
         p1HandPieces.push(pieceData);
       });
 
-      PIECE_SET.forEach((name) => {
+      PIECE_SET.forEach((name, id) => {
         const mesh = createPieceMesh(name, false);
         scene.add(mesh);
-        const pieceData = { name, isPlayer1: false, mesh, gridX: -1, gridZ: -1, inHand: true };
+        const pieceData = { id: 'p2_' + name + '_' + id, name, isPlayer1: false, mesh, gridX: -1, gridZ: -1, inHand: true };
         mesh.userData = { pieceData, isPiece: true };
         p2HandPieces.push(pieceData);
       });
@@ -528,7 +529,7 @@
       return frontline;
     }
 
-    // --- 8. 精密な全駒移動計算（提示定義通り） ---
+    // --- 8. 精密な全駒移動計算 ---
     function getValidMoves(pieceData) {
       const validMoves = [];
       
@@ -634,7 +635,6 @@
 
       const name = pieceData.name;
 
-      // 各駒の正確なベクトル移動定義
       if (name === '帥') {
         const v1 = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
         v1.forEach(([dx,dz]) => addPath(dx, dz, 1));
@@ -809,7 +809,7 @@
       return true;
     }
 
-    // --- 9. AI思考（標準CPU ＆ 深層探索最強CPU） ---
+    // --- 9. 思考型AI ＆ 人間の一手評価システム ---
     const PIECE_VALUES = {
       '帥': 9999, '大': 50, '中': 40, '侍': 20, '馬': 20, 
       '忍': 15, '槍': 12, '弓': 10, '砲': 10, '筒': 10, 
@@ -849,6 +849,41 @@
       score += Math.random() * 4;
 
       return score;
+    }
+
+    // 人間の手を100点満点で評価する関数
+    function evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType) {
+      let rawScore = 50; // 基本点
+      const targetStack = boardData[targetX][targetZ];
+
+      if (actionType === 'TAKE') {
+        const topEnemy = targetStack[targetStack.length - 1];
+        const val = PIECE_VALUES[topEnemy.name] || 10;
+        rawScore += val * 1.2;
+      }
+
+      if (actionType === 'NEGAERI') {
+        rawScore += 45;
+      }
+
+      if (actionType === 'TSUKE') {
+        rawScore += targetStack.length * 12;
+      }
+
+      // 相手（CPU）に王手をかけたら加点
+      if (isSuiUnderAttack(false)) {
+        rawScore += 30;
+      }
+
+      // 100点満点内に収める
+      let finalScore = Math.min(100, Math.max(10, Math.round(rawScore)));
+      
+      let comment = '（普通の手）';
+      if (finalScore >= 90) comment = '（最善手！神の一手）';
+      else if (finalScore >= 75) comment = '（好手！優勢拡大）';
+      else if (finalScore <= 35) comment = '（悪手！危険）';
+
+      return `${finalScore}点 ${comment}`;
     }
 
     function isSuiUnderAttack(isP1) {
@@ -922,7 +957,7 @@
             if (!topPiece.isPlayer1) {
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
-                let score = evaluateCandidateMove(topPiece, m.x, m.z);
+                const score = evaluateCandidateMove(topPiece, m.x, m.z);
                 const isSafe = testMoveIsSafeForSui(topPiece, m.x, m.z);
                 allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
               });
@@ -934,7 +969,7 @@
       p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
-          let score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
+          const score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
           const isSafe = testMoveIsSafeForSui(handPiece, m.x, m.z);
           allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe });
         });
@@ -948,7 +983,6 @@
       let chosenMove = null;
 
       if (cpuLevel === 'HARD' && safeCandidates.length > 0) {
-        // 最強モード：1手先の盤面変化評価（ミニマックス）を行って最善手を選択
         searchPool.forEach(c => {
           const origX = c.pieceData.gridX;
           const origZ = c.pieceData.gridZ;
@@ -983,19 +1017,16 @@
       isCPUThinking = false;
     }
 
-    // --- 10. 盤面状態の保存 ＆ 待った機能（決着後も復元可能） ---
+    // --- 10. 厳密な状態保存 ＆ 待った機能（バグ排除改修） ---
     function saveState() {
       const state = {
         isPlayer1Turn,
-        board: Array(BOARD_SIZE).fill(null).map((_, x) => 
+        // 全25駒×2プレイヤーの正確な存在場所（ID指定）を記録
+        p1PiecesState: p1HandPieces.map(p => ({ id: p.id, name: p.name, inHand: p.inHand, gridX: p.gridX, gridZ: p.gridZ })),
+        p2PiecesState: p2HandPieces.map(p => ({ id: p.id, name: p.name, inHand: p.inHand, gridX: p.gridX, gridZ: p.gridZ })),
+        boardGridIds: Array(BOARD_SIZE).fill(null).map((_, x) => 
           Array(BOARD_SIZE).fill(null).map((_, z) => 
-            boardData[x][z].map(p => ({
-              name: p.name,
-              isPlayer1: p.isPlayer1,
-              inHand: p.inHand,
-              gridX: p.gridX,
-              gridZ: p.gridZ
-            }))
+            boardData[x][z].map(p => p.id)
           )
         )
       };
@@ -1004,26 +1035,50 @@
     }
 
     function restoreState(state) {
-      winModal.style.display = 'none'; // 決着ダイアログを閉じる
+      winModal.style.display = 'none';
 
-      boardData.forEach(row => row.forEach(stack => stack.length = 0));
-      
-      p1HandPieces.forEach(p => { p.inHand = true; p.gridX = -1; p.gridZ = -1; scene.add(p.mesh); });
-      p2HandPieces.forEach(p => { p.inHand = true; p.gridX = -1; p.gridZ = -1; scene.add(p.mesh); });
-
+      // 盤面配列を全クリア
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
-          state.board[x][z].forEach((savedP, idx) => {
-            const handList = savedP.isPlayer1 ? p1HandPieces : p2HandPieces;
-            const piece = handList.find(p => p.inHand && p.name === savedP.name);
+          boardData[x][z] = [];
+        }
+      }
+
+      // IDマップ参照用辞書を作成
+      const allPieceMap = {};
+      p1HandPieces.forEach(p => allPieceMap[p.id] = p);
+      p2HandPieces.forEach(p => allPieceMap[p.id] = p);
+
+      // P1の手駒・盤上状態を正確に復元
+      state.p1PiecesState.forEach(saved => {
+        const piece = allPieceMap[saved.id];
+        if (piece) {
+          piece.inHand = saved.inHand;
+          piece.gridX = saved.gridX;
+          piece.gridZ = saved.gridZ;
+          scene.add(piece.mesh);
+        }
+      });
+
+      // P2の手駒・盤上状態を正確に復元
+      state.p2PiecesState.forEach(saved => {
+        const piece = allPieceMap[saved.id];
+        if (piece) {
+          piece.inHand = saved.inHand;
+          piece.gridX = saved.gridX;
+          piece.gridZ = saved.gridZ;
+          scene.add(piece.mesh);
+        }
+      });
+
+      // 盤面上のスタック構造と座標を3D空間へ正確に完全再構築
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        for (let z = 0; z < BOARD_SIZE; z++) {
+          const idsInStack = state.boardGridIds[x][z];
+          idsInStack.forEach((id, idx) => {
+            const piece = allPieceMap[id];
             if (piece) {
-              piece.inHand = false;
-              piece.gridX = x;
-              piece.gridZ = z;
               boardData[x][z].push(piece);
-
-              scene.add(piece.mesh);
-
               const worldX = (x - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
               const worldZ = (z - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
               const worldY = 0.06 + (PIECE_HEIGHT / 2) + (idx * PIECE_HEIGHT);
@@ -1359,6 +1414,11 @@
     function executeMove(pieceData, targetX, targetZ, actionType) {
       saveState();
 
+      // 人間の手であれば100点満点で採点評価する
+      if (isVsCPU && isPlayer1Turn) {
+        lastMoveEvalText = evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType);
+      }
+
       const targetStack = boardData[targetX][targetZ];
       const sourceStack = pieceData.inHand ? null : boardData[pieceData.gridX][pieceData.gridZ];
 
@@ -1459,7 +1519,7 @@
 
       if (isVsCPU && !isPlayer1Turn) {
         isCPUThinking = true;
-        statusEl.textContent = 'CPUが思考中...';
+        statusEl.textContent = (lastMoveEvalText ? `【あなたの手: ${lastMoveEvalText}】 ` : '') + 'CPUが思考中...';
         setTimeout(() => {
           makeCPUMove();
         }, 800);
@@ -1505,7 +1565,8 @@
       } else {
         if (isVsCPU) {
           const playerStr = isPlayer1Turn ? 'あなた（白）' : 'CPU（黒）';
-          statusEl.textContent = `対局中 - 手番: ${playerStr}`;
+          const evalPrefix = lastMoveEvalText ? `【前手評価: ${lastMoveEvalText}】 ` : '';
+          statusEl.textContent = `${evalPrefix}手番: ${playerStr}`;
         } else {
           const playerStr = isPlayer1Turn ? '白（先手）' : '黒（後手）';
           statusEl.textContent = `対局中 - 手番: ${playerStr}`;
