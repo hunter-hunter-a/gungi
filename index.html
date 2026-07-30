@@ -145,10 +145,11 @@
   <!-- モード選択モーダル -->
   <div id="mode-modal" class="modal" style="display: block;">
     <h3>対局モード選択</h3>
-    <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦形式を選んでください</p>
+    <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
-      <button id="btn-vs-cpu" class="btn-action btn-cpu">1人プレイ（vs CPU）</button>
-      <button id="btn-vs-human" class="btn-action btn-primary">2人プレイ（対人戦）</button>
+      <button id="btn-vs-cpu" class="btn-action btn-cpu">1人プレイ (vs CPU)</button>
+      <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・固定配置)</button>
+      <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・自由配置)</button>
     </div>
   </div>
 
@@ -236,7 +237,7 @@
     let isPlayer1Turn = true;
     let isVsCPU = false;
     let isCPUThinking = false;
-    let phase = 'INIT';
+    let phase = 'INIT'; // 'SETUP' or 'PLAY'
     let p1Done = false;
     let p2Done = false;
     let p1SuiPlaced = false;
@@ -762,7 +763,6 @@
       const targetStack = boardData[targetX][targetZ];
       const targetHeight = targetStack.length;
 
-      // 1. 相手の駒を取る評価
       if (targetHeight > 0) {
         const topPiece = targetStack[targetHeight - 1];
         if (topPiece.isPlayer1 !== pieceData.isPlayer1) {
@@ -770,20 +770,16 @@
         }
       }
 
-      // 2. ツケ（重ねる）評価（高レベルほど高い価値）
       if (targetHeight > 0) {
         score += (targetHeight + 1) * 8;
       }
 
-      // 3. 前進評価（相手の陣地へ進む）
       score += targetZ * 3;
 
-      // 4. 手駒を新しく打つよりは盤面の駒を動かす方が優先度高め
       if (!pieceData.inHand) {
         score += 5;
       }
 
-      // 5. ランダム性の付与（少し人間らしい揺らぎ）
       score += Math.random() * 4;
 
       return score;
@@ -794,13 +790,12 @@
 
       const candidates = [];
 
-      // 1. 盤面上の全CPU駒の可能手をリスト化
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const stack = boardData[x][z];
           if (stack.length > 0) {
             const topPiece = stack[stack.length - 1];
-            if (!topPiece.isPlayer1) { // CPU（黒）
+            if (!topPiece.isPlayer1) {
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
                 const score = evaluateCandidateMove(topPiece, m.x, m.z);
@@ -811,7 +806,6 @@
         }
       }
 
-      // 2. 手駒から打てる手も追加
       p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
@@ -822,7 +816,6 @@
 
       if (candidates.length === 0) return;
 
-      // 最も得点の高い手を選択
       candidates.sort((a, b) => b.score - a.score);
       const bestMove = candidates[0];
 
@@ -847,7 +840,8 @@
 
     const modeModal = document.getElementById('mode-modal');
     const btnVsCPU = document.getElementById('btn-vs-cpu');
-    const btnVsHuman = document.getElementById('btn-vs-human');
+    const btnVsHumanBeginner = document.getElementById('btn-vs-human-beginner');
+    const btnVsHumanStandard = document.getElementById('btn-vs-human-standard');
 
     const actionModal = document.getElementById('action-modal');
     const btnTsuke = document.getElementById('btn-tsuke');
@@ -863,26 +857,37 @@
 
     btnVsCPU.addEventListener('click', () => {
       isVsCPU = true;
+      phase = 'PLAY';
       modeModal.style.display = 'none';
       setupHandPieces();
       setupBeginnerLayout();
-      phase = 'PLAY';
       isPlayer1Turn = true;
       modeDesc.textContent = '対局モード: 1人プレイ (vs CPU)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
     });
 
-    btnVsHuman.addEventListener('click', () => {
+    btnVsHumanBeginner.addEventListener('click', () => {
       isVsCPU = false;
+      phase = 'PLAY';
       modeModal.style.display = 'none';
       setupHandPieces();
       setupBeginnerLayout();
-      phase = 'PLAY';
       isPlayer1Turn = true;
-      modeDesc.textContent = '対局モード: 2人プレイ';
+      modeDesc.textContent = '対局モード: 2人プレイ (初級)';
       statusEl.textContent = '対局開始 - 手番: 白（先手）';
       doneBtn.style.display = 'none';
+    });
+
+    btnVsHumanStandard.addEventListener('click', () => {
+      isVsCPU = false;
+      phase = 'SETUP';
+      modeModal.style.display = 'none';
+      setupHandPieces();
+      isPlayer1Turn = true;
+      modeDesc.textContent = '自由初期配置フェーズ';
+      statusEl.textContent = '手番: 白（先手） - 『帥』を配置してください';
+      doneBtn.style.display = 'block';
     });
 
     function getIntersectedPieceData(intersects) {
@@ -901,7 +906,7 @@
     function handlePointerInput(clientX, clientY) {
       if (modeModal.style.display === 'block' || actionModal.style.display === 'block' || winModal.style.display === 'block' || isAnimatingCamera || isCPUThinking) return;
 
-      if (isVsCPU && !isPlayer1Turn) return; // CPUの手番中は操作不能
+      if (isVsCPU && !isPlayer1Turn) return;
 
       mouse.x = (clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(clientY / window.innerHeight) * 2 + 1;
@@ -939,6 +944,14 @@
           const stack = boardData[clickedPiece.gridX][clickedPiece.gridZ];
           if (stack[stack.length - 1] !== clickedPiece) {
             statusEl.textContent = '※一番上の駒しか動かせません！';
+            return;
+          }
+        }
+
+        if (phase === 'SETUP') {
+          const hasSui = isPlayer1Turn ? p1SuiPlaced : p2SuiPlaced;
+          if (!hasSui && clickedPiece.name !== '帥') {
+            statusEl.textContent = '※最初に『帥』を配置してください！';
             return;
           }
         }
@@ -1159,18 +1172,24 @@
     }
 
     function switchTurn() {
-      isPlayer1Turn = !isPlayer1Turn;
+      if (phase === 'SETUP') {
+        if (isPlayer1Turn) {
+          if (!p2Done) isPlayer1Turn = false;
+        } else {
+          if (!p1Done) isPlayer1Turn = true;
+        }
+      } else {
+        isPlayer1Turn = !isPlayer1Turn;
+      }
 
       const targetCamPos = isPlayer1Turn ? CAM_POS_P1 : CAM_POS_P2;
       
-      // VS CPU時はカメラ固定のままにする
       if (!isVsCPU) {
         animateCameraTo(targetCamPos);
       }
 
       updateStatusUI();
 
-      // CPU手番処理
       if (isVsCPU && !isPlayer1Turn) {
         isCPUThinking = true;
         statusEl.textContent = 'CPUが思考中...';
@@ -1180,15 +1199,49 @@
       }
     }
 
+    doneBtn.addEventListener('click', () => {
+      if (isPlayer1Turn) {
+        if (!p1SuiPlaced) {
+          statusEl.textContent = '※『帥』を配置してください';
+          return;
+        }
+        p1Done = true;
+      } else {
+        if (!p2SuiPlaced) {
+          statusEl.textContent = '※『帥』を配置してください';
+          return;
+        }
+        p2Done = true;
+      }
+
+      if (p2Done || (p1Done && p2Done)) {
+        phase = 'PLAY';
+        isPlayer1Turn = true;
+        statusEl.textContent = '初期配置完了！対局開始（先手：白）';
+        doneBtn.disabled = true;
+        doneBtn.style.display = 'none';
+        animateCameraTo(CAM_POS_P1);
+      } else {
+        switchTurn();
+      }
+    });
+
     function updateStatusUI() {
       if (winModal.style.display === 'block') return;
 
-      if (isVsCPU) {
-        const playerStr = isPlayer1Turn ? 'あなた（白）' : 'CPU（黒）';
-        statusEl.textContent = `対局中 - 手番: ${playerStr}`;
-      } else {
+      if (phase === 'SETUP') {
+        const hasSui = isPlayer1Turn ? p1SuiPlaced : p2SuiPlaced;
         const playerStr = isPlayer1Turn ? '白（先手）' : '黒（後手）';
-        statusEl.textContent = `対局中 - 手番: ${playerStr}`;
+        const actionStr = hasSui ? '配置か「済み」を選択' : '『帥』を自陣3行目に配置';
+        statusEl.textContent = `手番: ${playerStr} - ${actionStr}`;
+      } else {
+        if (isVsCPU) {
+          const playerStr = isPlayer1Turn ? 'あなた（白）' : 'CPU（黒）';
+          statusEl.textContent = `対局中 - 手番: ${playerStr}`;
+        } else {
+          const playerStr = isPlayer1Turn ? '白（先手）' : '黒（後手）';
+          statusEl.textContent = `対局中 - 手番: ${playerStr}`;
+        }
       }
     }
 
