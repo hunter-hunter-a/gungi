@@ -414,6 +414,10 @@
     let p2HandPieces = [];
 
     function setupHandPieces() {
+      // 既存メッシュを完全消去
+      p1HandPieces.forEach(p => { if (p.mesh) scene.remove(p.mesh); });
+      p2HandPieces.forEach(p => { if (p.mesh) scene.remove(p.mesh); });
+
       p1HandPieces = [];
       p2HandPieces = [];
 
@@ -529,7 +533,7 @@
       return frontline;
     }
 
-    // --- 8. 精密な全駒移動計算 ---
+    // --- 8. 移動計算 ---
     function getValidMoves(pieceData) {
       const validMoves = [];
       
@@ -823,8 +827,8 @@
           const stack = boardData[x][z];
           stack.forEach((p, idx) => {
             const val = (PIECE_VALUES[p.name] || 10) * (1 + idx * 0.5);
-            if (!p.isPlayer1) score += val; // CPU(黒)
-            else score -= val; // プレイヤー(白)
+            if (!p.isPlayer1) score += val;
+            else score -= val;
           });
         }
       }
@@ -851,9 +855,8 @@
       return score;
     }
 
-    // 人間の手を100点満点で評価する関数
     function evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType) {
-      let rawScore = 50; // 基本点
+      let rawScore = 50;
       const targetStack = boardData[targetX][targetZ];
 
       if (actionType === 'TAKE') {
@@ -870,12 +873,10 @@
         rawScore += targetStack.length * 12;
       }
 
-      // 相手（CPU）に王手をかけたら加点
       if (isSuiUnderAttack(false)) {
         rawScore += 30;
       }
 
-      // 100点満点内に収める
       let finalScore = Math.min(100, Math.max(10, Math.round(rawScore)));
       
       let comment = '（普通の手）';
@@ -1021,7 +1022,6 @@
     function saveState() {
       const state = {
         isPlayer1Turn,
-        // 全25駒×2プレイヤーの正確な存在場所（ID指定）を記録
         p1PiecesState: p1HandPieces.map(p => ({ id: p.id, name: p.name, inHand: p.inHand, gridX: p.gridX, gridZ: p.gridZ })),
         p2PiecesState: p2HandPieces.map(p => ({ id: p.id, name: p.name, inHand: p.inHand, gridX: p.gridX, gridZ: p.gridZ })),
         boardGridIds: Array(BOARD_SIZE).fill(null).map((_, x) => 
@@ -1044,12 +1044,10 @@
         }
       }
 
-      // IDマップ参照用辞書を作成
       const allPieceMap = {};
       p1HandPieces.forEach(p => allPieceMap[p.id] = p);
       p2HandPieces.forEach(p => allPieceMap[p.id] = p);
 
-      // P1の手駒・盤上状態を正確に復元
       state.p1PiecesState.forEach(saved => {
         const piece = allPieceMap[saved.id];
         if (piece) {
@@ -1060,7 +1058,6 @@
         }
       });
 
-      // P2の手駒・盤上状態を正確に復元
       state.p2PiecesState.forEach(saved => {
         const piece = allPieceMap[saved.id];
         if (piece) {
@@ -1071,7 +1068,6 @@
         }
       });
 
-      // 盤面上のスタック構造と座標を3D空間へ正確に完全再構築
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const idsInStack = state.boardGridIds[x][z];
@@ -1414,7 +1410,6 @@
     function executeMove(pieceData, targetX, targetZ, actionType) {
       saveState();
 
-      // 人間の手であれば100点満点で採点評価する
       if (isVsCPU && isPlayer1Turn) {
         lastMoveEvalText = evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType);
       }
@@ -1424,6 +1419,7 @@
 
       let suiCaptured = false;
 
+      // 駒を取り除く処理（物理的にも完全消去）
       if (actionType === 'TAKE') {
         const enemyColor = targetStack[targetStack.length - 1].isPlayer1;
         while (targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1 === enemyColor) {
