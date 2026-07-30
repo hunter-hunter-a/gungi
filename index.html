@@ -771,7 +771,7 @@
       return true;
     }
 
-    // --- 9. 思考型AI（詰み判定＆厳密逃走ロジック） ---
+    // --- 9. 思考型AI（完全安全最優先思考ロジック） ---
     const PIECE_VALUES = {
       '帥': 9999, '大': 50, '中': 40, '侍': 20, '馬': 20, 
       '忍': 15, '槍': 12, '弓': 10, '砲': 10, '筒': 10, 
@@ -801,7 +801,7 @@
       return score;
     }
 
-    // 特定のプレイヤーの「帥」が現在王手を受けているかチェック
+    // 特定プレイヤーの「帥」が現在敵の攻撃範囲にいるかチェック
     function isSuiUnderAttack(isP1) {
       let suiPiece = null;
       for (let x = 0; x < BOARD_SIZE; x++) {
@@ -835,8 +835,8 @@
       return false;
     }
 
-    // 仮想的に手を指してみて、王手が解消できるかシミュレーション
-    function testMoveResolvesCheck(pieceData, targetX, targetZ) {
+    // 指した結果、自分の「帥」が安全（王手されない状態）に保たれるか仮想テスト
+    function testMoveIsSafeForSui(pieceData, targetX, targetZ) {
       const origX = pieceData.gridX;
       const origZ = pieceData.gridZ;
       const origInHand = pieceData.inHand;
@@ -850,36 +850,36 @@
       pieceData.gridZ = targetZ;
       targetStack.push(pieceData);
 
-      const stillInCheck = isSuiUnderAttack(pieceData.isPlayer1);
+      // 指した直後の自分の帥の安全性を確認
+      const isCheck = isSuiUnderAttack(pieceData.isPlayer1);
 
-      // 元に戻す
+      // 盤面を完全に元の状態へ復元
       targetStack.pop();
       pieceData.inHand = origInHand;
       pieceData.gridX = origX;
       pieceData.gridZ = origZ;
       if (!origInHand) sourceStack.push(pieceData);
 
-      return !stillInCheck;
+      return !isCheck; // 王手されない＝安全（true）
     }
 
     function makeCPUMove() {
       if (winModal.style.display === 'block') return;
 
       const allCandidates = [];
-      const suiInCheck = isSuiUnderAttack(false); // CPU（黒）に王手がかかっているか
 
-      // 全候補手を算出
+      // 全可能手の収集
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const stack = boardData[x][z];
           if (stack.length > 0) {
             const topPiece = stack[stack.length - 1];
-            if (!topPiece.isPlayer1) {
+            if (!topPiece.isPlayer1) { // CPU（黒）
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
                 const score = evaluateCandidateMove(topPiece, m.x, m.z);
-                const isEscapeMove = testMoveResolvesCheck(topPiece, m.x, m.z);
-                allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isEscapeMove });
+                const isSafe = testMoveIsSafeForSui(topPiece, m.x, m.z);
+                allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
               });
             }
           }
@@ -890,29 +890,24 @@
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
           const score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
-          const isEscapeMove = testMoveResolvesCheck(handPiece, m.x, m.z);
-          allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isEscapeMove });
+          const isSafe = testMoveIsSafeForSui(handPiece, m.x, m.z);
+          allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe });
         });
       });
 
       if (allCandidates.length === 0) return;
 
+      // 【絶対条件】自分の帥が安全に保たれる「安全手」のみを抽出（自分から取られに行く手を排斥）
+      const safeCandidates = allCandidates.filter(c => c.isSafe);
+
       let chosenMove = null;
 
-      if (suiInCheck) {
-        // 王手を受けている場合：王手を解除できる手（isEscapeMove === true）のみを抽出
-        const escapeCandidates = allCandidates.filter(c => c.isEscapeMove);
-        if (escapeCandidates.length > 0) {
-          // 逃げ道がある場合は最も評価の高い逃げ手を選択
-          escapeCandidates.sort((a, b) => b.score - a.score);
-          chosenMove = escapeCandidates[0];
-        } else {
-          // 【詰み状態】どうしても王手を解除できないため諦めて任意の手を選択（＝次で取られる）
-          allCandidates.sort((a, b) => b.score - a.score);
-          chosenMove = allCandidates[0];
-        }
+      if (safeCandidates.length > 0) {
+        // 安全手が存在する場合は、その中で一番高得点の手を選ぶ
+        safeCandidates.sort((a, b) => b.score - a.score);
+        chosenMove = safeCandidates[0];
       } else {
-        // 通常時
+        // 万が一完全に詰んで逃げ道がない場合のみ、通常手の中で最善の手を指す
         allCandidates.sort((a, b) => b.score - a.score);
         chosenMove = allCandidates[0];
       }
