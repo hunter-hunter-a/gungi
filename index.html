@@ -87,9 +87,7 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.4); 
       transition: all 0.2s;
     }
-    .btn-undo {
-      background: #f57c00;
-    }
+    .btn-undo { background: #f57c00; }
     .btn:disabled { background: #555; cursor: not-allowed; box-shadow: none; }
 
     .modal {
@@ -247,7 +245,7 @@
     let p1SuiPlaced = false;
     let p2SuiPlaced = false;
 
-    let moveHistory = []; // 待った用スタック
+    let moveHistory = [];
 
     // --- 5. 盤面生成 ---
     const BOARD_SIZE = 9;
@@ -509,6 +507,7 @@
       arrangeHandPieces();
     }
 
+    // 一番上の自駒のみで最前線を決定（他プレイヤーにツケられている駒は除外）
     function getFrontlineZ(isP1) {
       let frontline = isP1 ? 8 : 0;
       for (let x = 0; x < BOARD_SIZE; x++) {
@@ -526,11 +525,11 @@
       return frontline;
     }
 
-    // --- 8. 移動計算（段差ルール条件修正） ---
+    // --- 8. 移動計算（新・飛越・段差条件修正） ---
     function getValidMoves(pieceData) {
       const validMoves = [];
       
-      // 手駒を新しく打つ場合
+      // 【新（あらた）】手駒を打つ場合
       if (pieceData.inHand) {
         for (let x = 0; x < BOARD_SIZE; x++) {
           for (let z = 0; z < BOARD_SIZE; z++) {
@@ -544,6 +543,7 @@
               const isValidArataZ = pieceData.isPlayer1 ? (z >= frontlineZ) : (z <= frontlineZ);
               const stack = boardData[x][z];
               const isEnemyTop = stack.length > 0 && stack[stack.length - 1].isPlayer1 !== pieceData.isPlayer1;
+              // 新は自駒最前線より手前、3段未満、かつ相手の駒の上にツケることは不可
               if (isValidArataZ && stack.length < 3 && !isEnemyTop) {
                 validMoves.push({ x, z, levelColor: 1 });
               }
@@ -556,14 +556,14 @@
       const cx = pieceData.gridX;
       const cz = pieceData.gridZ;
       const stack = boardData[cx][cz];
-      const movingPieceLevel = stack.length; // 自分の現在の段数（1, 2, 3）
+      const movingPieceLevel = stack.length; // 自分の現在の段数
       const dir = pieceData.isPlayer1 ? -1 : 1;
 
-      // 段差ルールチェック：移動先の最上段の高さが自分の高さより高い場合は移動不可（ツケ・取り不可）
+      // 移動先が自分より高い段の場合は移動不可
       const checkHeightLimit = (tx, tz) => {
         const targetStack = boardData[tx][tz];
         if (targetStack.length > movingPieceLevel) {
-          return false; // 自分より高い段の駒には重なることも取ることもできない
+          return false;
         }
         return true;
       };
@@ -604,6 +604,7 @@
         }
       };
 
+      // 飛越移動関数（自分と同じかそれ以下の段の駒を飛び越える）
       const addJumpByOffset = (dx, dz, colorTag) => {
         const tx = cx + dx;
         const tz = cz + dz;
@@ -612,15 +613,20 @@
           const normZ = dz === 0 ? 0 : dz / Math.abs(dz);
           const dist = Math.max(Math.abs(dx), Math.abs(dz));
 
-          const midX = cx + normX * (dist - 1);
-          const midZ = cz + normZ * (dist - 1);
-          if (midX >= 0 && midX < BOARD_SIZE && midZ >= 0 && midZ < BOARD_SIZE) {
+          let clearPath = true;
+          for (let i = 1; i < dist; i++) {
+            const midX = cx + normX * i;
+            const midZ = cz + normZ * i;
             const midStack = boardData[midX][midZ];
-            if (midStack.length > 0 && midStack.length <= movingPieceLevel) {
-              if (checkHeightLimit(tx, tz)) {
-                validMoves.push({ x: tx, z: tz, levelColor: colorTag });
-              }
+            // 途中の駒が自分より高い段の場合は飛越不可
+            if (midStack.length > movingPieceLevel) {
+              clearPath = false;
+              break;
             }
+          }
+
+          if (clearPath && checkHeightLimit(tx, tz)) {
+            validMoves.push({ x: tx, z: tz, levelColor: colorTag });
           }
         }
       };
@@ -705,38 +711,40 @@
         if (movingPieceLevel >= 3) dirs.forEach(([dx,dz]) => addPath(dx*3, dz*3, 3, 3, 3));
       }
       else if (name === '砲') {
-        addPath(-1, 0, 1, 1, 1); addPath(1, 0, 1, 1, 1);
-        addPath(0, -dir, 1, 1, 1); addPath(0, dir*3, 3, 1, 1);
+        addPath(-1, 0, 1, 1, 1); addPath(1, 0, 1, 1, 1); addPath(0, -dir, 1, 1, 1);
+        addJumpByOffset(0, dir*3, 0);
         if (movingPieceLevel >= 2) {
-          addPath(-2, 0, 2, 2, 2); addPath(2, 0, 2, 2, 2);
-          addPath(0, -dir*2, 2, 2, 2); addPath(0, dir*4, 4, 2, 2);
+          addPath(-2, 0, 2, 2, 2); addPath(2, 0, 2, 2, 2); addPath(0, -dir*2, 2, 2, 2);
+          addJumpByOffset(0, dir*4, 0);
         }
         if (movingPieceLevel >= 3) {
-          addPath(-3, 0, 3, 3, 3); addPath(3, 0, 3, 3, 3);
-          addPath(0, -dir*3, 3, 3, 3); addPath(0, dir*5, 5, 3, 3);
+          addPath(-3, 0, 3, 3, 3); addPath(3, 0, 3, 3, 3); addPath(0, -dir*3, 3, 3, 3);
+          addJumpByOffset(0, dir*5, 0);
         }
-        if (movingPieceLevel === 1) addJumpByOffset(0, dir*3, 0);
-        else if (movingPieceLevel === 2) addJumpByOffset(0, dir*4, 0);
-        else if (movingPieceLevel === 3) addJumpByOffset(0, dir*5, 0);
       }
       else if (name === '弓') {
-        addPath(-1, dir*2, 2, 1, 1); addPath(0, dir*2, 2, 1, 1);
-        addPath(1, dir*2, 2, 1, 1); addPath(0, -dir, 1, 1, 1);
-        if (movingPieceLevel >= 2) [[-2,dir*3],[0,dir*3],[2,dir*3],[0,-dir*2]].forEach(([dx,dz]) => addPath(dx, dz, 3, 2, 2));
-        if (movingPieceLevel >= 3) [[-3,dir*4],[0,dir*4],[3,dir*4],[0,-dir*3]].forEach(([dx,dz]) => addPath(dx, dz, 4, 3, 3));
-
-        if (movingPieceLevel === 1) { addJumpByOffset(-1, dir*2, 0); addJumpByOffset(0, dir*2, 0); addJumpByOffset(1, dir*2, 0); }
-        else if (movingPieceLevel === 2) { addJumpByOffset(-2, dir*3, 0); addJumpByOffset(0, dir*3, 0); addJumpByOffset(2, dir*3, 0); }
-        else if (movingPieceLevel === 3) { addJumpByOffset(-3, dir*4, 0); addJumpByOffset(0, dir*4, 0); addJumpByOffset(3, dir*4, 0); }
+        addPath(0, -dir, 1, 1, 1);
+        [[-1, dir*2], [0, dir*2], [1, dir*2]].forEach(([dx, dz]) => addJumpByOffset(dx, dz, 0));
+        if (movingPieceLevel >= 2) {
+          addPath(0, -dir*2, 2, 2, 2);
+          [[-2, dir*3], [0, dir*3], [2, dir*3]].forEach(([dx, dz]) => addJumpByOffset(dx, dz, 0));
+        }
+        if (movingPieceLevel >= 3) {
+          addPath(0, -dir*3, 3, 3, 3);
+          [[-3, dir*4], [0, dir*4], [3, dir*4]].forEach(([dx, dz]) => addJumpByOffset(dx, dz, 0));
+        }
       }
       else if (name === '筒') {
-        addPath(0, dir*2, 2, 1, 1); addPath(-1, -dir, 1, 1, 1); addPath(1, -dir, 1, 1, 1);
-        if (movingPieceLevel >= 2) [[0,dir*3],[-2,-dir*2],[2,-dir*2]].forEach(([dx,dz]) => addPath(dx, dz, 3, 2, 2));
-        if (movingPieceLevel >= 3) [[0,dir*4],[-3,-dir*3],[3,-dir*3]].forEach(([dx,dz]) => addPath(dx, dz, 4, 3, 3));
-
-        if (movingPieceLevel === 1) addJumpByOffset(0, dir*2, 0);
-        else if (movingPieceLevel === 2) addJumpByOffset(0, dir*3, 0);
-        else if (movingPieceLevel === 3) addJumpByOffset(0, dir*4, 0);
+        addPath(-1, -dir, 1, 1, 1); addPath(1, -dir, 1, 1, 1);
+        addJumpByOffset(0, dir*2, 0);
+        if (movingPieceLevel >= 2) {
+          addPath(-2, -dir*2, 2, 2, 2); addPath(2, -dir*2, 2, 2, 2);
+          addJumpByOffset(0, dir*3, 0);
+        }
+        if (movingPieceLevel >= 3) {
+          addPath(-3, -dir*3, 3, 3, 3); addPath(3, -dir*3, 3, 3, 3);
+          addJumpByOffset(0, dir*4, 0);
+        }
       }
       else if (name === '謀') {
         const dirs = [[-1,dir],[1,dir],[0,-dir]];
@@ -748,8 +756,9 @@
       return validMoves;
     }
 
+    // 【寝返り判定】謀の下にある全ての相手駒と同じ種類の駒が手駒にあるかチェック
     function checkCanNegaeri(pieceData, targetX, targetZ) {
-      if (pieceData.name !== '谋') return false;
+      if (pieceData.name !== '謀') return false;
       const targetStack = boardData[targetX][targetZ];
       if (targetStack.length === 0) return false;
 
@@ -769,9 +778,9 @@
       return true;
     }
 
-    // --- 9. 思考型AI（CPU対戦ロジック） ---
+    // --- 9. 思考型AI（CPU対戦 ＆ 王手緊急回避ロジック） ---
     const PIECE_VALUES = {
-      '帥': 9999, '大': 50, '中': 40, '侍': 20, '馬': 20, 
+      '帥': 9999, '大': 50, '中': 40, '侍': 20, '马': 20, '馬': 20, 
       '忍': 15, '槍': 12, '弓': 10, '砲': 10, '筒': 10, 
       '砦': 8, '兵': 5, '小': 5, '謀': 15
     };
@@ -794,19 +803,51 @@
 
       score += targetZ * 3;
 
-      if (!pieceData.inHand) {
-        score += 5;
-      }
-
+      if (!pieceData.inHand) score += 5;
       score += Math.random() * 4;
 
       return score;
+    }
+
+    // 王手されているかチェック
+    function isSuiUnderAttack(isP1) {
+      let suiPiece = null;
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        for (let z = 0; z < BOARD_SIZE; z++) {
+          const stack = boardData[x][z];
+          if (stack.length > 0) {
+            const top = stack[stack.length - 1];
+            if (top.name === '帥' && top.isPlayer1 === isP1) {
+              suiPiece = top;
+              break;
+            }
+          }
+        }
+      }
+      if (!suiPiece) return false;
+
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        for (let z = 0; z < BOARD_SIZE; z++) {
+          const stack = boardData[x][z];
+          if (stack.length > 0) {
+            const top = stack[stack.length - 1];
+            if (top.isPlayer1 !== isP1) {
+              const moves = getValidMoves(top);
+              if (moves.some(m => m.x === suiPiece.gridX && m.z === suiPiece.gridZ)) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
     }
 
     function makeCPUMove() {
       if (winModal.style.display === 'block') return;
 
       const candidates = [];
+      const suiInDanger = isSuiUnderAttack(false); // CPU（黒）の帥に王手がかかっているか
 
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
@@ -816,7 +857,14 @@
             if (!topPiece.isPlayer1) {
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
-                const score = evaluateCandidateMove(topPiece, m.x, m.z);
+                let score = evaluateCandidateMove(topPiece, m.x, m.z);
+                
+                // 帥に王手がかかっている場合、帥を逃がす手を超優先
+                if (suiInDanger) {
+                  if (topPiece.name === '帥') score += 10000;
+                  else score -= 500;
+                }
+
                 candidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score });
               });
             }
@@ -824,13 +872,15 @@
         }
       }
 
-      p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
-        const validMoves = getValidMoves(handPiece);
-        validMoves.forEach(m => {
-          const score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
-          candidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score });
+      if (!suiInDanger) {
+        p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
+          const validMoves = getValidMoves(handPiece);
+          validMoves.forEach(m => {
+            const score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
+            candidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score });
+          });
         });
-      });
+      }
 
       if (candidates.length === 0) return;
 
@@ -839,14 +889,13 @@
 
       const targetStack = boardData[bestMove.targetX][bestMove.targetZ];
       const hasEnemyTop = targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1;
-      
       const actionType = hasEnemyTop ? 'TAKE' : 'TSUKE';
       
       executeMove(bestMove.pieceData, bestMove.targetX, bestMove.targetZ, actionType);
       isCPUThinking = false;
     }
 
-    // --- 10. 盤面状態の保存 ＆ 待った機能 ---
+    // --- 10. 盤面状態の保存 ＆ 待った機能（完全復元対応） ---
     function saveState() {
       const state = {
         isPlayer1Turn,
@@ -860,22 +909,20 @@
               gridZ: p.gridZ
             }))
           )
-        ),
-        p1Hand: p1HandPieces.map(p => ({ name: p.name, inHand: p.inHand, gridX: p.gridX, gridZ: p.gridZ })),
-        p2Hand: p2HandPieces.map(p => ({ name: p.name, inHand: p.inHand, gridX: p.gridX, gridZ: p.gridZ }))
+        )
       };
       moveHistory.push(state);
       updateUndoButtonUI();
     }
 
     function restoreState(state) {
-      // 全駒メッシュのクリーンアップ
+      // 既存の盤面上の駒を消去
       boardData.forEach(row => row.forEach(stack => stack.length = 0));
       
-      p1HandPieces.forEach(p => { p.inHand = true; p.gridX = -1; p.gridZ = -1; });
-      p2HandPieces.forEach(p => { p.inHand = true; p.gridX = -1; p.gridZ = -1; });
+      p1HandPieces.forEach(p => { p.inHand = true; p.gridX = -1; p.gridZ = -1; scene.add(p.mesh); });
+      p2HandPieces.forEach(p => { p.inHand = true; p.gridX = -1; p.gridZ = -1; scene.add(p.mesh); });
 
-      // 盤面の再構成
+      // 盤面と駒の位置・可視状態を完全再構築
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           state.board[x][z].forEach((savedP, idx) => {
@@ -886,6 +933,8 @@
               piece.gridX = x;
               piece.gridZ = z;
               boardData[x][z].push(piece);
+
+              scene.add(piece.mesh);
 
               const worldX = (x - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
               const worldZ = (z - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
@@ -906,10 +955,9 @@
       if (moveHistory.length === 0 || isCPUThinking) return;
 
       if (isVsCPU) {
-        // CPU戦は2手分（CPUの手 ＋ 自分の直前の手）戻して自分のターンにする
         if (moveHistory.length >= 2) {
-          moveHistory.pop(); // CPUの手を捨てる
-          const prevPlayerState = moveHistory.pop(); // プレイヤーの直前の状態
+          moveHistory.pop();
+          const prevPlayerState = moveHistory.pop();
           restoreState(prevPlayerState);
         } else if (moveHistory.length === 1) {
           const initialState = moveHistory.pop();
@@ -920,7 +968,7 @@
         restoreState(prevState);
       }
       deselect();
-      statusEl.textContent = '「待った」しました。手番を選択し直せます。';
+      statusEl.textContent = '「待った」しました。';
     }
 
     function updateUndoButtonUI() {
@@ -1127,14 +1175,13 @@
       const targetStack = boardData[targetX][targetZ];
       const sourceStack = pieceData.inHand ? null : boardData[pieceData.gridX][pieceData.gridZ];
       
-      const movingHeight = pieceData.inHand ? 1 : sourceStack.length;
       const targetHeight = targetStack.length;
 
       const validMoves = getValidMoves(pieceData);
       const isValidDestination = validMoves.some(m => m.x === targetX && m.z === targetZ);
 
       if (!isValidDestination) {
-        statusEl.textContent = '※そこへは移動できません（高さ制限など）';
+        statusEl.textContent = '※そこへは移動できません';
         return;
       }
 
@@ -1204,7 +1251,6 @@
     }
 
     function executeMove(pieceData, targetX, targetZ, actionType) {
-      // 手を確定する前に盤面状態を履歴に保存（待った用）
       saveState();
 
       const targetStack = boardData[targetX][targetZ];
@@ -1222,6 +1268,7 @@
         statusEl.textContent = '相手の駒を取りました！';
       }
 
+      // 【寝返り処理】相手駒を取り除き、自分の同種の手駒を配置する
       if (actionType === 'NEGAERI') {
         const myHand = isPlayer1Turn ? p1HandPieces : p2HandPieces;
         const enemiesToReplace = targetStack.filter(p => p.isPlayer1 !== isPlayer1Turn);
