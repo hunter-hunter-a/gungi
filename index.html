@@ -839,7 +839,6 @@
       const targetStack = boardData[targetX][targetZ];
       const targetHeight = targetStack.length;
 
-      // 【修正】ツケて4段目になる移動は候補から完全除外
       if (targetHeight >= 3) {
         return -99999;
       }
@@ -964,7 +963,7 @@
               validMoves.forEach(m => {
                 const score = evaluateCandidateMove(topPiece, m.x, m.z);
                 const isSafe = testMoveIsSafeForSui(topPiece, m.x, m.z);
-                if (score > -90000) { // 4段以上を禁止
+                if (score > -90000) {
                   allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
                 }
               });
@@ -1026,7 +1025,7 @@
       isCPUThinking = false;
     }
 
-    // --- 10. 状態保存 ＆ 待った機能（積層データ同期修正） ---
+    // --- 10. 状態保存 ＆ 待った機能 ---
     function saveState() {
       const state = {
         isPlayer1Turn,
@@ -1075,7 +1074,6 @@
         }
       });
 
-      // 【完全修正】レイヤー判定用userDataと3D座標を1層目から完全リセット配置
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const idsInStack = state.boardGridIds[x][z];
