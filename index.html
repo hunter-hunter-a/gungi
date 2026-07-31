@@ -131,7 +131,6 @@
     .btn-negaeri { background: #7b1fa2; color: white; }
     .btn-cancel { background: #616161; color: white; }
 
-    /* パスワード認証画面専用スタイル */
     #auth-overlay {
       position: fixed;
       top: 0;
@@ -180,13 +179,11 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   
-  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
-  <!-- パスワード認証オーバーレイ -->
   <div id="auth-overlay">
     <div class="auth-box">
       <h3>閲覧パスワード認証</h3>
@@ -208,7 +205,6 @@
     <button id="done-btn" class="btn" style="display: none;">済み（配置完了）</button>
   </div>
 
-  <!-- モード選択モーダル -->
   <div id="mode-modal" class="modal">
     <h3>対局モード選択</h3>
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
@@ -220,7 +216,6 @@
     </div>
   </div>
 
-  <!-- アクション選択モーダル -->
   <div id="action-modal" class="modal">
     <h3>行動を選択</h3>
     <div class="modal-btns">
@@ -231,7 +226,6 @@
     </div>
   </div>
 
-  <!-- 決着勝敗ダイアログ -->
   <div id="win-modal" class="modal">
     <h3 id="win-title" style="font-size: 22px; color: #f0c040;">決着！</h3>
     <p id="win-desc" style="font-size: 14px; margin: 10px 0;"></p>
@@ -244,8 +238,6 @@
   <div id="canvas-container"></div>
 
   <script>
-    // --- 0. パスワード認証システム ---
-    // ▼ ここに複雑なパスワードを設定してください
     const ACCESS_PASSWORD = 'Gungi_Secret_2026_#Secure!'; 
 
     function verifyPassword() {
@@ -254,19 +246,17 @@
 
       if (inputVal === ACCESS_PASSWORD) {
         document.getElementById('auth-overlay').style.display = 'none';
-        document.getElementById('mode-modal').style.display = 'block'; // モード選択を表示
+        document.getElementById('mode-modal').style.display = 'block';
       } else {
         errorMsg.textContent = 'パスワードが違います';
       }
     }
 
-    // Enterキーでも認証できるようにする
     document.getElementById('auth-password-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') verifyPassword();
     });
 
-    // --- Firebase設定 ＆ クラウド共有AIデータ ---
-    const GAME_VERSION = 'v2.0.1_secure_shared'; 
+    const GAME_VERSION = 'v2.1.0_strict_safety'; 
 
     const firebaseConfig = {
       apiKey: "AIzaSyA10pwIG5awgZUTAT_nXj5fxOELYhunSmc",
@@ -304,7 +294,6 @@
       }
     }
 
-    // --- 1. セットアップ ---
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x121216);
@@ -327,7 +316,6 @@
     controls.enableDamping = true;
     controls.target.set(0, 0, 0);
 
-    // --- 2. カメラアニメーション ---
     let isAnimatingCamera = false;
     let cameraStartPos = new THREE.Vector3();
     let cameraTargetPos = new THREE.Vector3();
@@ -346,7 +334,6 @@
       return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     }
 
-    // --- 3. ライティング ---
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
 
@@ -361,7 +348,6 @@
     subLight.position.set(-6, 8, -6);
     scene.add(subLight);
 
-    // --- 4. ゲーム状態管理 ---
     let isPlayer1Turn = true;
     let isVsCPU = false;
     let cpuLevel = 'NORMAL';
@@ -375,7 +361,6 @@
     let moveHistory = [];
     let lastMoveEvalText = '';
 
-    // --- 5. 盤面生成 ---
     const BOARD_SIZE = 9;
     const SQUARE_SIZE = 1;
     const PIECE_HEIGHT = 0.22;
@@ -417,7 +402,6 @@
 
     scene.add(boardGroup);
 
-    // --- ハイライトメッシュ ---
     const highlightGroup = new THREE.Group();
     scene.add(highlightGroup);
 
@@ -452,7 +436,6 @@
       highlightGroup.add(mesh);
     }
 
-    // --- 6. 文字描画テクスチャ ＆ 駒生成 ---
     function createPieceTexture(text, isPlayer1) {
       const canvas = document.createElement('canvas');
       canvas.width = 256;
@@ -524,7 +507,6 @@
       return group;
     }
 
-    // --- 7. 手駒管理 ---
     const PIECE_SET = [
       '帥', '大', '中', '小', '小', 
       '兵', '兵', '兵', '兵', '槍', 
@@ -655,7 +637,6 @@
       return frontline;
     }
 
-    // --- 8. 移動計算 ---
     function getValidMoves(pieceData) {
       const validMoves = [];
       
@@ -935,7 +916,6 @@
       return true;
     }
 
-    // --- 9. 思考型AI ＆ クラウド/リアルタイム学習思考 ---
     const PIECE_VALUES = {
       '帥': 99999, '大': 50, '中': 40, '侍': 20, '馬': 20, 
       '忍': 15, '槍': 12, '弓': 10, '砲': 10, '筒': 10, 
@@ -1031,6 +1011,7 @@
       return `${finalScore}点 ${comment}`;
     }
 
+    // 指定されたプレイヤーの帥が、敵のいかなる攻撃（盤上駒・手駒の新）に晒されているか厳密に判定
     function isSuiUnderAttack(isP1) {
       let suiPiece = null;
       for (let x = 0; x < BOARD_SIZE; x++) {
@@ -1074,7 +1055,8 @@
       return false;
     }
 
-    function testMoveIsSafeForSui(pieceData, targetX, targetZ) {
+    // 【厳密改修】仮にこの手を指した場合、移動後の帥が敵の攻撃範囲に一切入らないか（二段階完全安全チェック）
+    function testMoveIsCompletelySafeForSui(pieceData, targetX, targetZ) {
       const origX = pieceData.gridX;
       const origZ = pieceData.gridZ;
       const origInHand = pieceData.inHand;
@@ -1088,7 +1070,8 @@
       pieceData.gridZ = targetZ;
       targetStack.push(pieceData);
 
-      const isCheck = isSuiUnderAttack(pieceData.isPlayer1);
+      // 1. 王手が解除されているか ＆ 2. 移動先のマス自体が敵の利きに一切入っていないか
+      const isStillInCheck = isSuiUnderAttack(pieceData.isPlayer1);
 
       targetStack.pop();
       pieceData.inHand = origInHand;
@@ -1096,7 +1079,7 @@
       pieceData.gridZ = origZ;
       if (!origInHand) sourceStack.push(pieceData);
 
-      return !isCheck;
+      return !isStillInCheck;
     }
 
     function runBackgroundSelfPlay() {
@@ -1121,7 +1104,7 @@
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
                 let score = evaluateCandidateMove(topPiece, m.x, m.z);
-                const isSafe = testMoveIsSafeForSui(topPiece, m.x, m.z);
+                const isSafe = testMoveIsCompletelySafeForSui(topPiece, m.x, m.z);
 
                 if (!isSafe) score = -9999999;
 
@@ -1138,7 +1121,7 @@
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
           let score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
-          const isSafe = testMoveIsSafeForSui(handPiece, m.x, m.z);
+          const isSafe = testMoveIsCompletelySafeForSui(handPiece, m.x, m.z);
           if (!isSafe) score = -9999999;
 
           if (score > -900000) {
@@ -1149,6 +1132,7 @@
 
       const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000);
 
+      // 【完全詰み・降参判定】安全に指せる手が一切ない場合は潔く投了
       if (perfectlySafeCandidates.length === 0) {
         winDesc.textContent = `CPUは詰みを察知し、降参（投了）しました！あなたの勝利です！`;
         winModal.style.display = 'block';
@@ -1203,7 +1187,6 @@
       isCPUThinking = false;
     }
 
-    // --- 10. 状態保存 ＆ 待った機能 ---
     function saveState() {
       const state = {
         isPlayer1Turn,
@@ -1306,7 +1289,6 @@
     document.getElementById('undo-btn').addEventListener('click', undoMove);
     document.getElementById('win-undo-btn').addEventListener('click', undoMove);
 
-    // --- 11. タッチ / クリック処理 ---
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let selectedPieceData = null;
@@ -1753,7 +1735,6 @@
       }
     }
 
-    // --- 12. ループ ＆ リサイズ ---
     const clock = new THREE.Clock();
 
     window.addEventListener('resize', () => {
