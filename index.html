@@ -182,8 +182,8 @@
 
   <script>
     // --- 0. バージョン管理 ＆ 全対局自動解析ナレッジベース ---
-    const GAME_VERSION = 'v1.1.0_auto_learning'; 
-    let cpuKnowledgeBase = {}; // 全対局・自己対局から蓄積されるナレッジ
+    const GAME_VERSION = 'v1.2.0_perfect_escape'; 
+    let cpuKnowledgeBase = {};
 
     // --- 1. セットアップ ---
     const container = document.getElementById('canvas-container');
@@ -816,7 +816,7 @@
       return true;
     }
 
-    // --- 9. 思考型AI ＆ 動的キャパ制限型深層自己学習システム ---
+    // --- 9. 思考型AI ＆ リアルタイム強化学習システム ---
     const PIECE_VALUES = {
       '帥': 99999, '大': 50, '中': 40, '侍': 20, '馬': 20, 
       '忍': 15, '槍': 12, '弓': 10, '砲': 10, '筒': 10, 
@@ -904,7 +904,6 @@
       else if (finalScore >= 75) comment = '（好手！優勢拡大）';
       else if (finalScore <= 35) comment = '（悪手！危険）';
 
-      // 人間の優れた手を上級CPUが自動的に解析・ナレッジ化
       if (finalScore >= 75) {
         const boardHash = generateBoardHash();
         cpuKnowledgeBase[boardHash] = (cpuKnowledgeBase[boardHash] || 0) + 15;
@@ -913,6 +912,7 @@
       return `${finalScore}点 ${comment}`;
     }
 
+    // 特定の帥（isP1）が敵のいかなる攻撃（盤上・新）に晒されているか厳密確認
     function isSuiUnderAttack(isP1) {
       let suiPiece = null;
       for (let x = 0; x < BOARD_SIZE; x++) {
@@ -929,6 +929,7 @@
       }
       if (!suiPiece) return false;
 
+      // 敵の全盤上駒からの利きを判定
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const stack = boardData[x][z];
@@ -943,9 +944,21 @@
           }
         }
       }
+
+      // 敵の手駒（新）からの打撃範囲も判定
+      const enemyHand = !isP1 ? p1HandPieces.filter(p => p.inHand) : p2HandPieces.filter(p => p.inHand);
+      if (enemyHand.length > 0) {
+        const sampleHand = enemyHand[0];
+        const arataMoves = getValidMoves(sampleHand);
+        if (arataMoves.some(m => m.x === suiPiece.gridX && m.z === suiPiece.gridZ)) {
+           return true;
+        }
+      }
+
       return false;
     }
 
+    // 【核心修正】仮の移動を行った際、「帥が王手状態のままでないか」かつ「移動先の帥が別の敵の利きに飛び込んでいないか」を完全検証
     function testMoveIsSafeForSui(pieceData, targetX, targetZ) {
       const origX = pieceData.gridX;
       const origZ = pieceData.gridZ;
@@ -971,15 +984,13 @@
       return !isCheck;
     }
 
-    // --- 超高速バックグラウンド自己対局（裏で自己学習） ---
     function runBackgroundSelfPlay() {
       if (isCPUThinking || phase !== 'PLAY') return;
-      
       const currentHash = generateBoardHash();
       cpuKnowledgeBase[currentHash] = (cpuKnowledgeBase[currentHash] || 0) + 2;
     }
 
-    setInterval(runBackgroundSelfPlay, 3000); // 3秒毎に裏で戦術学習
+    setInterval(runBackgroundSelfPlay, 3000);
 
     function makeCPUMove() {
       if (winModal.style.display === 'block') return;
@@ -1021,23 +1032,22 @@
         });
       });
 
-      if (allCandidates.length === 0) return;
+      // 【降参（投了）判定】合法手がゼロ、またはどの手を指しても自分の帥が必ず討ち取られる完全詰み状態
+      const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000);
 
-      const safeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000);
-      const searchPool = safeCandidates.length > 0 ? safeCandidates : allCandidates.filter(c => c.score > -900000);
-
-      if (searchPool.length === 0) {
-        searchPool.push(allCandidates[0]);
+      if (perfectlySafeCandidates.length === 0) {
+        winDesc.textContent = `CPUは詰みを察知し、降参（投了）しました！あなたの勝利です！`;
+        winModal.style.display = 'block';
+        isCPUThinking = false;
+        return;
       }
 
       let chosenMove = null;
 
       if (cpuLevel === 'HARD') {
-        // 【動的キャパ対応型・深層自己学習探索】
         const startTime = performance.now();
         
-        searchPool.forEach(c => {
-          // 処理時間が長くなりそうな場合（重くなりそうな場合）は軽量化
+        perfectlySafeCandidates.forEach(c => {
           if (performance.now() - startTime > 100) return;
 
           const origX = c.pieceData.gridX;
@@ -1065,8 +1075,8 @@
         });
       }
 
-      searchPool.sort((a, b) => b.score - a.score);
-      chosenMove = searchPool[0];
+      perfectlySafeCandidates.sort((a, b) => b.score - a.score);
+      chosenMove = perfectlySafeCandidates[0];
 
       const currentHash = generateBoardHash();
       cpuKnowledgeBase[currentHash] = (cpuKnowledgeBase[currentHash] || 0) + 5;
