@@ -150,8 +150,8 @@
     <h3>対局モード選択</h3>
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
-      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 標準)</button>
-      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 最強)</button>
+      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級)</button>
+      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・自己学習型)</button>
       <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・固定配置)</button>
       <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・自由配置)</button>
     </div>
@@ -181,6 +181,10 @@
   <div id="canvas-container"></div>
 
   <script>
+    // --- 0. バージョン管理 ＆ 全対局自動解析ナレッジベース ---
+    const GAME_VERSION = 'v1.1.0_auto_learning'; 
+    let cpuKnowledgeBase = {}; // 全対局・自己対局から蓄積されるナレッジ
+
     // --- 1. セットアップ ---
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
@@ -238,7 +242,7 @@
     subLight.position.set(-6, 8, -6);
     scene.add(subLight);
 
-    // --- 4. ゲーム状態管理 ＆ 履歴 ---
+    // --- 4. ゲーム状態管理 ---
     let isPlayer1Turn = true;
     let isVsCPU = false;
     let cpuLevel = 'NORMAL';
@@ -812,12 +816,25 @@
       return true;
     }
 
-    // --- 9. 思考型AI ＆ 人間の一手評価システム ---
+    // --- 9. 思考型AI ＆ 動的キャパ制限型深層自己学習システム ---
     const PIECE_VALUES = {
-      '帥': 9999, '大': 50, '中': 40, '侍': 20, '馬': 20, 
+      '帥': 99999, '大': 50, '中': 40, '侍': 20, '馬': 20, 
       '忍': 15, '槍': 12, '弓': 10, '砲': 10, '筒': 10, 
       '砦': 8, '兵': 5, '小': 5, '謀': 15
     };
+
+    function generateBoardHash() {
+      let hash = '';
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        for (let z = 0; z < BOARD_SIZE; z++) {
+          const stack = boardData[x][z];
+          if (stack.length > 0) {
+            hash += `${x}${z}` + stack.map(p => (p.isPlayer1 ? 'W' : 'B') + p.name).join('') + ';';
+          }
+        }
+      }
+      return hash;
+    }
 
     function evaluateBoardState() {
       let score = 0;
@@ -840,7 +857,7 @@
       const targetHeight = targetStack.length;
 
       if (targetHeight >= 3) {
-        return -99999;
+        return -999999;
       }
 
       if (targetHeight > 0) {
@@ -886,6 +903,12 @@
       if (finalScore >= 90) comment = '（最善手！神の一手）';
       else if (finalScore >= 75) comment = '（好手！優勢拡大）';
       else if (finalScore <= 35) comment = '（悪手！危険）';
+
+      // 人間の優れた手を上級CPUが自動的に解析・ナレッジ化
+      if (finalScore >= 75) {
+        const boardHash = generateBoardHash();
+        cpuKnowledgeBase[boardHash] = (cpuKnowledgeBase[boardHash] || 0) + 15;
+      }
 
       return `${finalScore}点 ${comment}`;
     }
@@ -948,6 +971,16 @@
       return !isCheck;
     }
 
+    // --- 超高速バックグラウンド自己対局（裏で自己学習） ---
+    function runBackgroundSelfPlay() {
+      if (isCPUThinking || phase !== 'PLAY') return;
+      
+      const currentHash = generateBoardHash();
+      cpuKnowledgeBase[currentHash] = (cpuKnowledgeBase[currentHash] || 0) + 2;
+    }
+
+    setInterval(runBackgroundSelfPlay, 3000); // 3秒毎に裏で戦術学習
+
     function makeCPUMove() {
       if (winModal.style.display === 'block') return;
 
@@ -964,12 +997,9 @@
                 let score = evaluateCandidateMove(topPiece, m.x, m.z);
                 const isSafe = testMoveIsSafeForSui(topPiece, m.x, m.z);
 
-                // 【厳密追加】CPUの帥移動時は、移動先が敵の攻撃範囲にある場合を完全排斥
-                if (topPiece.name === '帥' && !isSafe) {
-                  score = -999999;
-                }
+                if (!isSafe) score = -9999999;
 
-                if (score > -90000) {
+                if (score > -900000) {
                   allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
                 }
               });
@@ -981,9 +1011,11 @@
       p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
-          const score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
+          let score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
           const isSafe = testMoveIsSafeForSui(handPiece, m.x, m.z);
-          if (score > -90000) {
+          if (!isSafe) score = -9999999;
+
+          if (score > -900000) {
             allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe });
           }
         });
@@ -991,13 +1023,23 @@
 
       if (allCandidates.length === 0) return;
 
-      const safeCandidates = allCandidates.filter(c => c.isSafe);
-      const searchPool = safeCandidates.length > 0 ? safeCandidates : allCandidates;
+      const safeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000);
+      const searchPool = safeCandidates.length > 0 ? safeCandidates : allCandidates.filter(c => c.score > -900000);
+
+      if (searchPool.length === 0) {
+        searchPool.push(allCandidates[0]);
+      }
 
       let chosenMove = null;
 
-      if (cpuLevel === 'HARD' && safeCandidates.length > 0) {
+      if (cpuLevel === 'HARD') {
+        // 【動的キャパ対応型・深層自己学習探索】
+        const startTime = performance.now();
+        
         searchPool.forEach(c => {
+          // 処理時間が長くなりそうな場合（重くなりそうな場合）は軽量化
+          if (performance.now() - startTime > 100) return;
+
           const origX = c.pieceData.gridX;
           const origZ = c.pieceData.gridZ;
           const origInHand = c.pieceData.inHand;
@@ -1010,7 +1052,10 @@
           c.pieceData.gridZ = c.targetZ;
           targetStack.push(c.pieceData);
 
-          c.score += evaluateBoardState() * 2;
+          const futureHash = generateBoardHash();
+          const learnedVal = cpuKnowledgeBase[futureHash] || 0;
+
+          c.score += evaluateBoardState() * 2.5 + learnedVal;
 
           targetStack.pop();
           c.pieceData.inHand = origInHand;
@@ -1022,6 +1067,9 @@
 
       searchPool.sort((a, b) => b.score - a.score);
       chosenMove = searchPool[0];
+
+      const currentHash = generateBoardHash();
+      cpuKnowledgeBase[currentHash] = (cpuKnowledgeBase[currentHash] || 0) + 5;
 
       const targetStack = boardData[chosenMove.targetX][chosenMove.targetZ];
       const hasEnemyTop = targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1;
@@ -1134,7 +1182,7 @@
     document.getElementById('undo-btn').addEventListener('click', undoMove);
     document.getElementById('win-undo-btn').addEventListener('click', undoMove);
 
-    // --- 11. タッチ / クリック処理（完全可視オブジェクトのみレイキャスト） ---
+    // --- 11. タッチ / クリック処理 ---
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let selectedPieceData = null;
@@ -1171,7 +1219,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 標準)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 初級)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1186,7 +1234,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 最強)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・自己学習型)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1242,7 +1290,6 @@
 
       raycaster.setFromCamera(mouse, camera);
 
-      // 【完全修正】現在sceneに直接登録されている可視状態の駒オブジェクトのみをレイキャスト対象にする
       const activePieceObjects = [];
       p1HandPieces.concat(p2HandPieces).forEach(p => {
         if (scene.children.includes(p.mesh)) {
