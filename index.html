@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <!-- Googleなどの検索エンジンにヒットさせない限定公開用設定 -->
   <meta name="robots" content="noindex, nofollow">
-  <title>軍儀 3D - GUNGI 3D (Private Edition)</title>
+  <title>軍儀 3D - Private Edition</title>
   <style>
     * { 
       margin: 0; 
@@ -130,18 +130,75 @@
     .btn-take { background: #c62828; color: white; }
     .btn-negaeri { background: #7b1fa2; color: white; }
     .btn-cancel { background: #616161; color: white; }
+
+    /* パスワード認証画面専用スタイル */
+    #auth-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(10, 10, 12, 0.98);
+      z-index: 9999;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .auth-box {
+      background: rgba(22, 22, 28, 0.96);
+      border: 1.5px solid #f0c040;
+      padding: 24px;
+      border-radius: 16px;
+      width: 88%;
+      max-width: 340px;
+      text-align: center;
+      color: #fff;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.9);
+    }
+    .auth-box h3 {
+      color: #f0c040;
+      margin-bottom: 12px;
+      font-size: 18px;
+    }
+    .auth-input {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      background: #121216;
+      border: 1px solid #444;
+      color: #fff;
+      border-radius: 8px;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+    .auth-error {
+      color: #ff4d4d;
+      font-size: 12px;
+      margin-top: 8px;
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   
-  <!-- Firebase SDK の読み込み -->
+  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
+  <!-- パスワード認証オーバーレイ -->
+  <div id="auth-overlay">
+    <div class="auth-box">
+      <h3>閲覧パスワード認証</h3>
+      <p style="font-size: 12px; color: #aaa; margin-bottom: 14px;">合言葉を入力してください</p>
+      <input type="password" id="auth-password-input" class="auth-input" placeholder="パスワードを入力">
+      <button class="btn-action btn-primary" onclick="verifyPassword()">認証して入室</button>
+      <div id="auth-error-msg" class="auth-error"></div>
+    </div>
+  </div>
+
   <div id="info">
-    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Fan Made</span></h2>
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Private Edition</span></h2>
     <p id="mode-desc">モードを選択してください</p>
     <div id="status">対局準備中...</div>
   </div>
@@ -152,7 +209,7 @@
   </div>
 
   <!-- モード選択モーダル -->
-  <div id="mode-modal" class="modal" style="display: block;">
+  <div id="mode-modal" class="modal">
     <h3>対局モード選択</h3>
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
@@ -187,10 +244,30 @@
   <div id="canvas-container"></div>
 
   <script>
-    // --- 0. Firebase設定 ＆ クラウド共有AIデータ ---
-    const GAME_VERSION = 'v2.0.0_firebase_shared'; 
+    // --- 0. パスワード認証システム ---
+    // ▼ ここに複雑なパスワードを設定してください
+    const ACCESS_PASSWORD = 'Gungi_Secret_2026_#Secure!'; 
 
-    // 【完了】取得されたFirebaseキーをセット完了済み
+    function verifyPassword() {
+      const inputVal = document.getElementById('auth-password-input').value;
+      const errorMsg = document.getElementById('auth-error-msg');
+
+      if (inputVal === ACCESS_PASSWORD) {
+        document.getElementById('auth-overlay').style.display = 'none';
+        document.getElementById('mode-modal').style.display = 'block'; // モード選択を表示
+      } else {
+        errorMsg.textContent = 'パスワードが違います';
+      }
+    }
+
+    // Enterキーでも認証できるようにする
+    document.getElementById('auth-password-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') verifyPassword();
+    });
+
+    // --- Firebase設定 ＆ クラウド共有AIデータ ---
+    const GAME_VERSION = 'v2.0.1_secure_shared'; 
+
     const firebaseConfig = {
       apiKey: "AIzaSyA10pwIG5awgZUTAT_nXj5fxOELYhunSmc",
       authDomain: "gungi-secret-ai.firebaseapp.com",
@@ -201,27 +278,22 @@
       measurementId: "G-SVP30JXP66"
     };
 
-    // Firebase 初期化
     let db = null;
     let cpuKnowledgeBase = {};
 
     try {
       firebase.initializeApp(firebaseConfig);
       db = firebase.firestore();
-      console.log("Firebase 接続成功");
       
-      // オンラインデータベースから最新の「共有ナレッジ」を自動ダウンロード
       db.collection("ai_knowledge").doc(GAME_VERSION).get().then((doc) => {
         if (doc.exists) {
           cpuKnowledgeBase = doc.data().knowledge || {};
-          console.log("クラウド学習データの同期完了:", Object.keys(cpuKnowledgeBase).length, "局面");
         }
       });
     } catch (e) {
-      console.log("ローカル動作モード（Firebase未接続）");
+      console.log("ローカル動作モード");
     }
 
-    // ナレッジをクラウド（Firebase）へ匿名保存・非同期同期
     function syncKnowledgeToCloud(boardHash, val) {
       cpuKnowledgeBase[boardHash] = (cpuKnowledgeBase[boardHash] || 0) + val;
       
