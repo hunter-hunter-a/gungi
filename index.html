@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>軍儀 3D - GUNGI 3D (Mobile Edition)</title>
+  <!-- Googleなどの検索エンジンにヒットさせない限定公開用設定 -->
+  <meta name="robots" content="noindex, nofollow">
+  <title>軍儀 3D - GUNGI 3D (Private Edition)</title>
   <style>
     * { 
       margin: 0; 
@@ -131,6 +133,10 @@
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  
+  <!-- Firebase SDK の読み込み -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -151,7 +157,7 @@
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
       <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級)</button>
-      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・自己学習型)</button>
+      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・クラウド共同学習型)</button>
       <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・固定配置)</button>
       <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・自由配置)</button>
     </div>
@@ -181,9 +187,50 @@
   <div id="canvas-container"></div>
 
   <script>
-    // --- 0. バージョン管理 ＆ 全対局自動解析ナレッジベース ---
-    const GAME_VERSION = 'v1.2.0_perfect_escape'; 
+    // --- 0. Firebase設定 ＆ クラウド共有AIデータ ---
+    const GAME_VERSION = 'v2.0.0_firebase_shared'; 
+
+    // 【完了】取得されたFirebaseキーをセット完了済み
+    const firebaseConfig = {
+      apiKey: "AIzaSyA10pwIG5awgZUTAT_nXj5fxOELYhunSmc",
+      authDomain: "gungi-secret-ai.firebaseapp.com",
+      projectId: "gungi-secret-ai",
+      storageBucket: "gungi-secret-ai.firebasestorage.app",
+      messagingSenderId: "590147633636",
+      appId: "1:590147633636:web:92228666bc2d9e91a407f1",
+      measurementId: "G-SVP30JXP66"
+    };
+
+    // Firebase 初期化
+    let db = null;
     let cpuKnowledgeBase = {};
+
+    try {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      console.log("Firebase 接続成功");
+      
+      // オンラインデータベースから最新の「共有ナレッジ」を自動ダウンロード
+      db.collection("ai_knowledge").doc(GAME_VERSION).get().then((doc) => {
+        if (doc.exists) {
+          cpuKnowledgeBase = doc.data().knowledge || {};
+          console.log("クラウド学習データの同期完了:", Object.keys(cpuKnowledgeBase).length, "局面");
+        }
+      });
+    } catch (e) {
+      console.log("ローカル動作モード（Firebase未接続）");
+    }
+
+    // ナレッジをクラウド（Firebase）へ匿名保存・非同期同期
+    function syncKnowledgeToCloud(boardHash, val) {
+      cpuKnowledgeBase[boardHash] = (cpuKnowledgeBase[boardHash] || 0) + val;
+      
+      if (db) {
+        const updateData = {};
+        updateData[`knowledge.${boardHash}`] = firebase.firestore.FieldValue.increment(val);
+        db.collection("ai_knowledge").doc(GAME_VERSION).set(updateData, { merge: true });
+      }
+    }
 
     // --- 1. セットアップ ---
     const container = document.getElementById('canvas-container');
@@ -816,7 +863,7 @@
       return true;
     }
 
-    // --- 9. 思考型AI ＆ リアルタイム強化学習システム ---
+    // --- 9. 思考型AI ＆ クラウド/リアルタイム学習思考 ---
     const PIECE_VALUES = {
       '帥': 99999, '大': 50, '中': 40, '侍': 20, '馬': 20, 
       '忍': 15, '槍': 12, '弓': 10, '砲': 10, '筒': 10, 
@@ -906,13 +953,12 @@
 
       if (finalScore >= 75) {
         const boardHash = generateBoardHash();
-        cpuKnowledgeBase[boardHash] = (cpuKnowledgeBase[boardHash] || 0) + 15;
+        syncKnowledgeToCloud(boardHash, 15);
       }
 
       return `${finalScore}点 ${comment}`;
     }
 
-    // 特定の帥（isP1）が敵のいかなる攻撃（盤上・新）に晒されているか厳密確認
     function isSuiUnderAttack(isP1) {
       let suiPiece = null;
       for (let x = 0; x < BOARD_SIZE; x++) {
@@ -929,7 +975,6 @@
       }
       if (!suiPiece) return false;
 
-      // 敵の全盤上駒からの利きを判定
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const stack = boardData[x][z];
@@ -945,7 +990,6 @@
         }
       }
 
-      // 敵の手駒（新）からの打撃範囲も判定
       const enemyHand = !isP1 ? p1HandPieces.filter(p => p.inHand) : p2HandPieces.filter(p => p.inHand);
       if (enemyHand.length > 0) {
         const sampleHand = enemyHand[0];
@@ -958,7 +1002,6 @@
       return false;
     }
 
-    // 【核心修正】仮の移動を行った際、「帥が王手状態のままでないか」かつ「移動先の帥が別の敵の利きに飛び込んでいないか」を完全検証
     function testMoveIsSafeForSui(pieceData, targetX, targetZ) {
       const origX = pieceData.gridX;
       const origZ = pieceData.gridZ;
@@ -987,7 +1030,7 @@
     function runBackgroundSelfPlay() {
       if (isCPUThinking || phase !== 'PLAY') return;
       const currentHash = generateBoardHash();
-      cpuKnowledgeBase[currentHash] = (cpuKnowledgeBase[currentHash] || 0) + 2;
+      syncKnowledgeToCloud(currentHash, 2);
     }
 
     setInterval(runBackgroundSelfPlay, 3000);
@@ -1032,7 +1075,6 @@
         });
       });
 
-      // 【降参（投了）判定】合法手がゼロ、またはどの手を指しても自分の帥が必ず討ち取られる完全詰み状態
       const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000);
 
       if (perfectlySafeCandidates.length === 0) {
@@ -1079,7 +1121,7 @@
       chosenMove = perfectlySafeCandidates[0];
 
       const currentHash = generateBoardHash();
-      cpuKnowledgeBase[currentHash] = (cpuKnowledgeBase[currentHash] || 0) + 5;
+      syncKnowledgeToCloud(currentHash, 5);
 
       const targetStack = boardData[chosenMove.targetX][chosenMove.targetZ];
       const hasEnemyTop = targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1;
@@ -1244,7 +1286,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・自己学習型)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・共同学習型)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
