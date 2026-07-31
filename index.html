@@ -414,8 +414,8 @@
     let p2HandPieces = [];
 
     function setupHandPieces() {
-      p1HandPieces.forEach(p => { if (p.mesh) scene.remove(p.mesh); });
-      p2HandPieces.forEach(p => { if (p.mesh) scene.remove(p.mesh); });
+      p1HandPieces.forEach(p => { if (p.mesh && p.mesh.parent) p.mesh.parent.remove(p.mesh); });
+      p2HandPieces.forEach(p => { if (p.mesh && p.mesh.parent) p.mesh.parent.remove(p.mesh); });
 
       p1HandPieces = [];
       p2HandPieces = [];
@@ -961,8 +961,14 @@
             if (!topPiece.isPlayer1) {
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
-                const score = evaluateCandidateMove(topPiece, m.x, m.z);
+                let score = evaluateCandidateMove(topPiece, m.x, m.z);
                 const isSafe = testMoveIsSafeForSui(topPiece, m.x, m.z);
+
+                // 【厳密追加】CPUの帥移動時は、移動先が敵の攻撃範囲にある場合を完全排斥
+                if (topPiece.name === '帥' && !isSafe) {
+                  score = -999999;
+                }
+
                 if (score > -90000) {
                   allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
                 }
@@ -1128,7 +1134,7 @@
     document.getElementById('undo-btn').addEventListener('click', undoMove);
     document.getElementById('win-undo-btn').addEventListener('click', undoMove);
 
-    // --- 11. タッチ / クリック処理 ---
+    // --- 11. タッチ / クリック処理（完全可視オブジェクトのみレイキャスト） ---
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let selectedPieceData = null;
@@ -1236,14 +1242,15 @@
 
       raycaster.setFromCamera(mouse, camera);
 
-      const allObjects = [];
-      scene.traverse(child => {
-        if (child.userData && child.userData.isPiece) {
-          allObjects.push(child);
+      // 【完全修正】現在sceneに直接登録されている可視状態の駒オブジェクトのみをレイキャスト対象にする
+      const activePieceObjects = [];
+      p1HandPieces.concat(p2HandPieces).forEach(p => {
+        if (scene.children.includes(p.mesh)) {
+          activePieceObjects.push(p.mesh);
         }
       });
 
-      const pieceIntersects = raycaster.intersectObjects(allObjects, true);
+      const pieceIntersects = raycaster.intersectObjects(activePieceObjects, true);
       const pieceHit = getIntersectedPieceData(pieceIntersects);
 
       if (pieceHit) {
