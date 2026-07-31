@@ -414,7 +414,6 @@
     let p2HandPieces = [];
 
     function setupHandPieces() {
-      // 既存メッシュを完全消去
       p1HandPieces.forEach(p => { if (p.mesh) scene.remove(p.mesh); });
       p2HandPieces.forEach(p => { if (p.mesh) scene.remove(p.mesh); });
 
@@ -566,9 +565,11 @@
       const movingPieceLevel = stack.length;
       const dir = pieceData.isPlayer1 ? -1 : 1;
 
+      // 【重要バグ修正】すでに3段（3個）ある場所には絶対にツケ（重ね）不可！
       const checkHeightAndSuiLimit = (tx, tz) => {
         const targetStack = boardData[tx][tz];
-        if (targetStack.length > movingPieceLevel) return false;
+        if (targetStack.length >= 3) return false; // 3段以上は重ねられない！
+        if (targetStack.length > movingPieceLevel) return false; // 自分より高い段へは不可
         if (targetStack.length > 0) {
           const topPiece = targetStack[targetStack.length - 1];
           if (topPiece.name === '帥' && topPiece.isPlayer1 === pieceData.isPlayer1) {
@@ -1018,7 +1019,7 @@
       isCPUThinking = false;
     }
 
-    // --- 10. 厳密な状態保存 ＆ 待った機能（バグ排除改修） ---
+    // --- 10. 状態保存 ＆ 待った機能 ---
     function saveState() {
       const state = {
         isPlayer1Turn,
@@ -1037,7 +1038,6 @@
     function restoreState(state) {
       winModal.style.display = 'none';
 
-      // 盤面配列を全クリア
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           boardData[x][z] = [];
@@ -1419,7 +1419,6 @@
 
       let suiCaptured = false;
 
-      // 駒を取り除く処理（物理的にも完全消去）
       if (actionType === 'TAKE') {
         const enemyColor = targetStack[targetStack.length - 1].isPlayer1;
         while (targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1 === enemyColor) {
