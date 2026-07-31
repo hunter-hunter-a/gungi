@@ -532,7 +532,7 @@
       return frontline;
     }
 
-    // --- 8. 移動計算（修正：自分以下の段への取り・ツケを許可） ---
+    // --- 8. 移動計算 ---
     function getValidMoves(pieceData) {
       const validMoves = [];
       
@@ -565,7 +565,6 @@
       const movingPieceLevel = stack.length;
       const dir = pieceData.isPlayer1 ? -1 : 1;
 
-      // 【修正】移動先のマスの段数が自分の段数「より大きい（>）」場合のみ移動・ツケ・取り不可（同段数は可能）
       const checkHeightAndSuiLimit = (tx, tz) => {
         const targetStack = boardData[tx][tz];
         if (targetStack.length > movingPieceLevel) return false;
@@ -840,6 +839,11 @@
       const targetStack = boardData[targetX][targetZ];
       const targetHeight = targetStack.length;
 
+      // 【修正】ツケて4段目になる移動は候補から完全除外
+      if (targetHeight >= 3) {
+        return -99999;
+      }
+
       if (targetHeight > 0) {
         const topPiece = targetStack[targetHeight - 1];
         if (topPiece.isPlayer1 !== pieceData.isPlayer1) {
@@ -960,7 +964,9 @@
               validMoves.forEach(m => {
                 const score = evaluateCandidateMove(topPiece, m.x, m.z);
                 const isSafe = testMoveIsSafeForSui(topPiece, m.x, m.z);
-                allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
+                if (score > -90000) { // 4段以上を禁止
+                  allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
+                }
               });
             }
           }
@@ -972,7 +978,9 @@
         validMoves.forEach(m => {
           const score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
           const isSafe = testMoveIsSafeForSui(handPiece, m.x, m.z);
-          allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe });
+          if (score > -90000) {
+            allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe });
+          }
         });
       });
 
@@ -1018,7 +1026,7 @@
       isCPUThinking = false;
     }
 
-    // --- 10. 厳密な状態保存 ＆ 待った機能（復元修正） ---
+    // --- 10. 状態保存 ＆ 待った機能（積層データ同期修正） ---
     function saveState() {
       const state = {
         isPlayer1Turn,
@@ -1047,16 +1055,13 @@
       p1HandPieces.forEach(p => allPieceMap[p.id] = p);
       p2HandPieces.forEach(p => allPieceMap[p.id] = p);
 
-      // 【修正】全50駒を一度完全にsceneに追加し、座標と状態をゼロリセット
       state.p1PiecesState.forEach(saved => {
         const piece = allPieceMap[saved.id];
         if (piece) {
           piece.inHand = saved.inHand;
           piece.gridX = saved.gridX;
           piece.gridZ = saved.gridZ;
-          if (!scene.children.includes(piece.mesh)) {
-            scene.add(piece.mesh);
-          }
+          if (!scene.children.includes(piece.mesh)) scene.add(piece.mesh);
         }
       });
 
@@ -1066,12 +1071,11 @@
           piece.inHand = saved.inHand;
           piece.gridX = saved.gridX;
           piece.gridZ = saved.gridZ;
-          if (!scene.children.includes(piece.mesh)) {
-            scene.add(piece.mesh);
-          }
+          if (!scene.children.includes(piece.mesh)) scene.add(piece.mesh);
         }
       });
 
+      // 【完全修正】レイヤー判定用userDataと3D座標を1層目から完全リセット配置
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const idsInStack = state.boardGridIds[x][z];
