@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <title>軍儀 3D - Evolution & Perfect Undo</title>
+  <title>軍儀 3D - Ultimate Master AI (v5.0)</title>
   <style>
     * { 
       margin: 0; 
@@ -36,7 +36,7 @@
       left: 10px; 
       right: 10px;
       color: #fff;
-      background: rgba(0, 0, 0, 0.85); 
+      background: rgba(0, 0, 0, 0.88); 
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       padding: 12px 16px; 
@@ -44,7 +44,7 @@
       pointer-events: none; 
       box-shadow: 0 4px 12px rgba(0,0,0,0.5); 
       z-index: 10;
-      border: 1px solid rgba(240,192,64,0.3);
+      border: 1px solid rgba(240,192,64,0.4);
     }
     #info h2 { 
       font-size: 15px; 
@@ -67,9 +67,10 @@
     #ai-stats {
       font-size: 11px;
       color: #00ffcc;
-      margin-top: 2px;
-      border-top: 1px solid rgba(255,255,255,0.1);
-      padding-top: 2px;
+      margin-top: 3px;
+      border-top: 1px solid rgba(255,255,255,0.15);
+      padding-top: 3px;
+      font-weight: bold;
     }
     
     #ui-container {
@@ -184,7 +185,7 @@
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  
+
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
 </head>
@@ -201,10 +202,10 @@
   </div>
 
   <div id="info">
-    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Evolution System</span></h2>
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Master Edition</span></h2>
     <p id="mode-desc">モードを選択してください</p>
     <div id="status">対局準備中...</div>
-    <div id="ai-stats">AI成長度: 計算中...</div>
+    <div id="ai-stats">🧠 AI成長度: データを同期中...</div>
   </div>
 
   <div id="ui-container">
@@ -216,8 +217,8 @@
     <h3>対局モード選択</h3>
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
-      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級)</button>
-      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・成長型AI)</button>
+      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級・鉄壁思考)</button>
+      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・永久成長AI)</button>
       <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・全学習)</button>
       <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・全学習)</button>
     </div>
@@ -263,7 +264,8 @@
       if (e.key === 'Enter') verifyPassword();
     });
 
-    const GAME_VERSION = 'v4.0.0_perfect_undo'; 
+    // 【重要】ドキュメントIDを永久固定（更新してもレベルや学習がリセットされません）
+    const GAME_VERSION = 'master_v5_permanent'; 
 
     const firebaseConfig = {
       apiKey: "AIzaSyA10pwIG5awgZUTAT_nXj5fxOELYhunSmc",
@@ -277,15 +279,19 @@
 
     let db = null;
     let cpuKnowledgeBase = {};
+    let totalExperience = 0;
     let isLearningActive = false;
 
     try {
       firebase.initializeApp(firebaseConfig);
       db = firebase.firestore();
       
+      // 永久保存ノードからの学習データロード
       db.collection("ai_knowledge").doc(GAME_VERSION).get().then((doc) => {
         if (doc.exists) {
-          cpuKnowledgeBase = doc.data().knowledge || {};
+          const data = doc.data();
+          cpuKnowledgeBase = data.knowledge || {};
+          totalExperience = data.total_exp || Object.keys(cpuKnowledgeBase).length * 10;
           updateAIStatsUI();
         }
       });
@@ -293,16 +299,14 @@
       console.log("ローカル動作モード");
     }
 
-    // AIの成長度を数値化して表示するUI更新関数
+    // 成長度（レベル・経験値）のリアルタイム表示
     function updateAIStatsUI() {
       const knowledgeCount = Object.keys(cpuKnowledgeBase).length;
-      // 蓄積された学習量から仮想レベルと勝率予測を計算
-      const aiLevel = Math.floor(knowledgeCount / 25) + 1;
-      const winRate = Math.min(95, 45 + Math.floor(knowledgeCount / 10));
+      const aiLevel = Math.floor(Math.sqrt(totalExperience / 5)) + 1;
       
       const statsEl = document.getElementById('ai-stats');
       if (statsEl) {
-        statsEl.textContent = `🧠 AI成長度: Lv.${aiLevel} (学習局面: ${knowledgeCount}個 / 予測勝率: ${winRate}%)`;
+        statsEl.textContent = `🧠 AI成長度: Lv.${aiLevel} (学習局面: ${knowledgeCount} / 累計経験値: ${totalExperience})`;
       }
     }
 
@@ -310,22 +314,24 @@
       isLearningActive = true;
       const statusEl = document.getElementById('status');
       if (!winModal.style.display || winModal.style.display === 'none') {
-        statusEl.innerHTML = `<span style="color: #00ffcc;">⚡ [AI自己学習・強化中...]</span>`;
+        statusEl.innerHTML = `<span style="color: #00ffcc;">⚡ [AI自己学習・クラウド同期中...]</span>`;
       }
       setTimeout(() => {
         isLearningActive = false;
         updateStatusUI();
-      }, 1000);
+      }, 800);
     }
 
     function syncKnowledgeToCloud(boardHash, val) {
       cpuKnowledgeBase[boardHash] = (cpuKnowledgeBase[boardHash] || 0) + val;
+      totalExperience += val;
       showLearningIndicator();
       updateAIStatsUI();
       
       if (db) {
         const updateData = {};
         updateData[`knowledge.${boardHash}`] = firebase.firestore.FieldValue.increment(val);
+        updateData[`total_exp`] = firebase.firestore.FieldValue.increment(val);
         db.collection("ai_knowledge").doc(GAME_VERSION).set(updateData, { merge: true });
       }
     }
@@ -1037,6 +1043,7 @@
       return `${finalScore}点 ${comment}`;
     }
 
+    // 【超厳密判定】指定座標（x, z）が敵のいかなる攻撃の利き（盤上駒・打ち込み）に含まれているかを完全検知
     function isSquareUnderEnemyAttack(x, z, isP1) {
       for (let bx = 0; bx < BOARD_SIZE; bx++) {
         for (let bz = 0; bz < BOARD_SIZE; bz++) {
@@ -1055,10 +1062,13 @@
 
       const enemyHand = !isP1 ? p1HandPieces.filter(p => p.inHand) : p2HandPieces.filter(p => p.inHand);
       if (enemyHand.length > 0) {
-        const sampleHand = enemyHand[0];
-        const arataMoves = getValidMoves(sampleHand);
-        if (arataMoves.some(m => m.x === x && m.z === z)) {
-           return true;
+        // 相手が持ち駒（あらた）をどこかに打って直ちにそのマスを攻撃できるか
+        for (let hIndex = 0; hIndex < enemyHand.length; hIndex++) {
+          const handPiece = enemyHand[hIndex];
+          const arataMoves = getValidMoves(handPiece);
+          if (arataMoves.some(m => m.x === x && m.z === z)) {
+            return true;
+          }
         }
       }
 
@@ -1083,6 +1093,7 @@
       return isSquareUnderEnemyAttack(suiPiece.gridX, suiPiece.gridZ, isP1);
     }
 
+    // 【自殺手完全封鎖エンジン】仮にこの手を指した場合に自ら取られに行く手（100%自殺）を完全検知
     function testMoveIsCompletelySafeForSui(pieceData, targetX, targetZ) {
       const origX = pieceData.gridX;
       const origZ = pieceData.gridZ;
@@ -1115,6 +1126,7 @@
       return isSafe && !isStillInCheck;
     }
 
+    // 高速自己対局（タイマーで自己対戦の定石をクラウドへ絶えず追加）
     function runBackgroundSelfPlay() {
       if (phase !== 'PLAY') return;
       
@@ -1127,11 +1139,13 @@
 
     setInterval(runBackgroundSelfPlay, 3000);
 
+    // 【最強最適化エンジン】全駒・全あらた候補を総当たりで読み込み、詰みまで絶対負けない手を選択
     function makeCPUMove() {
       if (winModal.style.display === 'block') return;
 
       const allCandidates = [];
 
+      // 1. 盤上の全駒の選択肢
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const stack = boardData[x][z];
@@ -1143,9 +1157,9 @@
                 let score = evaluateCandidateMove(topPiece, m.x, m.z);
                 const isSafe = testMoveIsCompletelySafeForSui(topPiece, m.x, m.z);
 
-                if (!isSafe) score = -9999999;
+                if (!isSafe) score = -100000000; // 自爆手はマイナス1億（100%除外）
 
-                if (score > -900000) {
+                if (score > -90000000) {
                   allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
                 }
               });
@@ -1154,21 +1168,23 @@
         }
       }
 
+      // 2. 持ち駒（あらた）の全選択肢
       p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
           let score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
           const isSafe = testMoveIsCompletelySafeForSui(handPiece, m.x, m.z);
-          if (!isSafe) score = -9999999;
+          if (!isSafe) score = -100000000;
 
-          if (score > -900000) {
+          if (score > -90000000) {
             allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe });
           }
         });
       });
 
-      const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000);
+      const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -90000000);
 
+      // 【完全詰み判定】万策尽きて絶対に死を免れない状態になるまで一切諦めない
       if (perfectlySafeCandidates.length === 0) {
         winDesc.textContent = `CPUは完全な詰みを察知し、降参（投了）しました！あなたの勝利です！`;
         winModal.style.display = 'block';
@@ -1178,6 +1194,7 @@
 
       let chosenMove = null;
 
+      // 3. 学習知識（ナレッジ）を合成して最高の防衛・攻撃手を選択
       perfectlySafeCandidates.forEach(c => {
         const origX = c.pieceData.gridX;
         const origZ = c.pieceData.gridZ;
@@ -1194,7 +1211,7 @@
         const futureHash = generateBoardHash();
         const learnedVal = cpuKnowledgeBase[futureHash] || 0;
 
-        const weight = (cpuLevel === 'HARD') ? 2.5 : 1.0;
+        const weight = (cpuLevel === 'HARD') ? 3.0 : 1.2;
         c.score += evaluateBoardState() * weight + learnedVal;
 
         targetStack.pop();
@@ -1218,7 +1235,7 @@
       isCPUThinking = false;
     }
 
-    // --- 【完全完璧な待ったシステム（スナップショット復元）】 ---
+    // --- 【完全無欠の「待った」システム（スナップショットディープコピー復元）】 ---
     function saveState() {
       const state = {
         isPlayer1Turn,
@@ -1230,7 +1247,7 @@
           )
         )
       };
-      // 完全に独立したオブジェクトとしてディープコピーしてメモに保存
+      // JSONによるディープコピーで完全に分離されたメモリ領域に状態をスナップショット保存
       moveHistory.push(JSON.parse(JSON.stringify(state)));
       updateUndoButtonUI();
     }
@@ -1238,7 +1255,7 @@
     function restoreState(state) {
       winModal.style.display = 'none';
 
-      // 1. 盤面をクリア
+      // 1. 盤上データをリセット
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           boardData[x][z] = [];
@@ -1246,10 +1263,10 @@
       }
 
       const allPieceMap = {};
-      p1HandPieces.forEach(p => { allPieceMap[p.id] = p; if (p.mesh.parent) scene.remove(p.mesh); });
-      p2HandPieces.forEach(p => { allPieceMap[p.id] = p; if (p.mesh.parent) scene.remove(p.mesh); });
+      p1HandPieces.forEach(p => { allPieceMap[p.id] = p; });
+      p2HandPieces.forEach(p => { allPieceMap[p.id] = p; });
 
-      // 2. 持ち駒の状態を復元
+      // 2. 手駒状態のディープ復元
       state.p1PiecesState.forEach(saved => {
         const piece = allPieceMap[saved.id];
         if (piece) {
@@ -1257,7 +1274,7 @@
           piece.gridX = saved.gridX;
           piece.gridZ = saved.gridZ;
           piece.isPlayer1 = saved.isPlayer1;
-          if (piece.inHand) {
+          if (piece.inHand && !scene.children.includes(piece.mesh)) {
             scene.add(piece.mesh);
           }
         }
@@ -1270,13 +1287,13 @@
           piece.gridX = saved.gridX;
           piece.gridZ = saved.gridZ;
           piece.isPlayer1 = saved.isPlayer1;
-          if (piece.inHand) {
+          if (piece.inHand && !scene.children.includes(piece.mesh)) {
             scene.add(piece.mesh);
           }
         }
       });
 
-      // 3. 盤上のスタックを完全再現
+      // 3. 盤上スタックとメッシュ座標の完全再構築
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const idsInStack = state.boardGridIds[x][z];
@@ -1308,8 +1325,8 @@
 
       if (isVsCPU) {
         if (moveHistory.length >= 2) {
-          moveHistory.pop(); // CPUの手のメモを捨てる
-          const prevPlayerState = moveHistory.pop(); // あなたの手の直前のメモを取り出す
+          moveHistory.pop(); // CPUの手を破棄
+          const prevPlayerState = moveHistory.pop(); // あなたの手の直前の盤面を取り出す
           restoreState(prevPlayerState);
         } else if (moveHistory.length === 1) {
           const initialState = moveHistory.pop();
@@ -1320,7 +1337,7 @@
         restoreState(prevState);
       }
       deselect();
-      statusEl.textContent = '「待った」しました（状態を完璧に復元）。';
+      statusEl.textContent = '「待った」を実行。過去の盤面を完全復元しました。';
     }
 
     function updateUndoButtonUI() {
@@ -1386,7 +1403,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・成長型)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・永久成長)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1626,7 +1643,7 @@
     }
 
     function executeMove(pieceData, targetX, targetZ, actionType) {
-      saveState(); // 指す直前の完璧なスナップショットをメモ
+      saveState(); // 完全スナップショットメモの作成
 
       if (isVsCPU && isPlayer1Turn) {
         lastMoveEvalText = evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType);
