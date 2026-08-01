@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <title>軍儀 3D - Ultimate Master AI (v5.0)</title>
+  <title>軍儀 3D - Full Deep Simulation (v6.0)</title>
   <style>
     * { 
       margin: 0; 
@@ -202,7 +202,7 @@
   </div>
 
   <div id="info">
-    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Master Edition</span></h2>
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Full Simulation Engine</span></h2>
     <p id="mode-desc">モードを選択してください</p>
     <div id="status">対局準備中...</div>
     <div id="ai-stats">🧠 AI成長度: データを同期中...</div>
@@ -217,8 +217,8 @@
     <h3>対局モード選択</h3>
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
-      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級・鉄壁思考)</button>
-      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・永久成長AI)</button>
+      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級・完全思考)</button>
+      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・永久深層学習)</button>
       <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・全学習)</button>
       <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・全学習)</button>
     </div>
@@ -264,7 +264,6 @@
       if (e.key === 'Enter') verifyPassword();
     });
 
-    // 【重要】ドキュメントIDを永久固定（更新してもレベルや学習がリセットされません）
     const GAME_VERSION = 'master_v5_permanent'; 
 
     const firebaseConfig = {
@@ -286,7 +285,6 @@
       firebase.initializeApp(firebaseConfig);
       db = firebase.firestore();
       
-      // 永久保存ノードからの学習データロード
       db.collection("ai_knowledge").doc(GAME_VERSION).get().then((doc) => {
         if (doc.exists) {
           const data = doc.data();
@@ -299,7 +297,6 @@
       console.log("ローカル動作モード");
     }
 
-    // 成長度（レベル・経験値）のリアルタイム表示
     function updateAIStatsUI() {
       const knowledgeCount = Object.keys(cpuKnowledgeBase).length;
       const aiLevel = Math.floor(Math.sqrt(totalExperience / 5)) + 1;
@@ -1043,31 +1040,52 @@
       return `${finalScore}点 ${comment}`;
     }
 
-    // 【超厳密判定】指定座標（x, z）が敵のいかなる攻撃の利き（盤上駒・打ち込み）に含まれているかを完全検知
-    function isSquareUnderEnemyAttack(x, z, isP1) {
+    // --- 【ディープ・フルシミュレーション用・仮想盤面検証エンジン】 ---
+
+    // 人間（または相手）が次の手で直接『帥』を即座に取れる手があるかフルスキャン
+    function canEnemyCaptureSuiDirectly(isCPUP1) {
+      const enemyIsP1 = !isCPUP1;
+      
+      // 1. 相手の盤上の全駒の移動・重ね・取りで帥を取れるか
       for (let bx = 0; bx < BOARD_SIZE; bx++) {
         for (let bz = 0; bz < BOARD_SIZE; bz++) {
           const stack = boardData[bx][bz];
           if (stack.length > 0) {
             const top = stack[stack.length - 1];
-            if (top.isPlayer1 !== isP1) {
+            if (top.isPlayer1 === enemyIsP1) {
               const moves = getValidMoves(top);
-              if (moves.some(m => m.x === x && m.z === z)) {
-                return true;
+              for (let i = 0; i < moves.length; i++) {
+                const tx = moves[i].x;
+                const tz = moves[i].z;
+                const targetStack = boardData[tx][tz];
+                if (targetStack.length > 0) {
+                  const targetTop = targetStack[targetStack.length - 1];
+                  if (targetTop.name === '帥' && targetTop.isPlayer1 === isCPUP1) {
+                    return true; // 直接取れる手が存在する
+                  }
+                }
               }
             }
           }
         }
       }
 
-      const enemyHand = !isP1 ? p1HandPieces.filter(p => p.inHand) : p2HandPieces.filter(p => p.inHand);
+      // 2. 相手の手駒（あらた）を打って即座に帥を取れるか
+      const enemyHand = enemyIsP1 ? p1HandPieces.filter(p => p.inHand) : p2HandPieces.filter(p => p.inHand);
       if (enemyHand.length > 0) {
-        // 相手が持ち駒（あらた）をどこかに打って直ちにそのマスを攻撃できるか
-        for (let hIndex = 0; hIndex < enemyHand.length; hIndex++) {
-          const handPiece = enemyHand[hIndex];
+        for (let h = 0; h < enemyHand.length; h++) {
+          const handPiece = enemyHand[h];
           const arataMoves = getValidMoves(handPiece);
-          if (arataMoves.some(m => m.x === x && m.z === z)) {
-            return true;
+          for (let i = 0; i < arataMoves.length; i++) {
+            const tx = arataMoves[i].x;
+            const tz = arataMoves[i].z;
+            const targetStack = boardData[tx][tz];
+            if (targetStack.length > 0) {
+              const targetTop = targetStack[targetStack.length - 1];
+              if (targetTop.name === '帥' && targetTop.isPlayer1 === isCPUP1) {
+                return true; // あらたで直接取れる手が存在する
+              }
+            }
           }
         }
       }
@@ -1075,26 +1093,9 @@
       return false;
     }
 
-    function isSuiUnderAttack(isP1) {
-      let suiPiece = null;
-      for (let x = 0; x < BOARD_SIZE; x++) {
-        for (let z = 0; z < BOARD_SIZE; z++) {
-          const stack = boardData[x][z];
-          if (stack.length > 0) {
-            const top = stack[stack.length - 1];
-            if (top.name === '帥' && top.isPlayer1 === isP1) {
-              suiPiece = top;
-              break;
-            }
-          }
-        }
-      }
-      if (!suiPiece) return false;
-      return isSquareUnderEnemyAttack(suiPiece.gridX, suiPiece.gridZ, isP1);
-    }
-
-    // 【自殺手完全封鎖エンジン】仮にこの手を指した場合に自ら取られに行く手（100%自殺）を完全検知
-    function testMoveIsCompletelySafeForSui(pieceData, targetX, targetZ) {
+    // CPUが候補手（c）を指した未来の仮想盤面を作り、人間側の全手（全駒＋全あらた）で帥が取られるか完全シミュレーション
+    function isMoveCompletelySafeDeepSimulation(pieceData, targetX, targetZ) {
+      const isCPUP1 = pieceData.isPlayer1;
       const origX = pieceData.gridX;
       const origZ = pieceData.gridZ;
       const origInHand = pieceData.inHand;
@@ -1102,31 +1103,40 @@
       const sourceStack = origInHand ? null : boardData[origX][origZ];
       const targetStack = boardData[targetX][targetZ];
 
+      // --- 仮想的に手を適用 ---
+      let capturedPieces = [];
+      if (targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1 !== isCPUP1) {
+        // 取り（TAKE）のシミュレーション
+        const enemyColor = targetStack[targetStack.length - 1].isPlayer1;
+        while (targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1 === enemyColor) {
+          capturedPieces.push(targetStack.pop());
+        }
+      }
+
       if (!origInHand) sourceStack.pop();
       pieceData.inHand = false;
       pieceData.gridX = targetX;
       pieceData.gridZ = targetZ;
       targetStack.push(pieceData);
 
-      let isSafe = true;
-      if (pieceData.name === '帥') {
-        if (isSquareUnderEnemyAttack(targetX, targetZ, pieceData.isPlayer1)) {
-          isSafe = false;
+      // --- 人間のあらゆる反撃（全駒移動・全取り・全あらた）で帥が取られるか検証 ---
+      const isSafe = !canEnemyCaptureSuiDirectly(isCPUP1);
+
+      // --- 仮想盤面を元の状態に完全復元 ---
+      targetStack.pop();
+      if (capturedPieces.length > 0) {
+        while (capturedPieces.length > 0) {
+          targetStack.push(capturedPieces.pop());
         }
       }
-
-      const isStillInCheck = isSuiUnderAttack(pieceData.isPlayer1);
-
-      targetStack.pop();
       pieceData.inHand = origInHand;
       pieceData.gridX = origX;
       pieceData.gridZ = origZ;
       if (!origInHand) sourceStack.push(pieceData);
 
-      return isSafe && !isStillInCheck;
+      return isSafe;
     }
 
-    // 高速自己対局（タイマーで自己対戦の定石をクラウドへ絶えず追加）
     function runBackgroundSelfPlay() {
       if (phase !== 'PLAY') return;
       
@@ -1139,13 +1149,13 @@
 
     setInterval(runBackgroundSelfPlay, 3000);
 
-    // 【最強最適化エンジン】全駒・全あらた候補を総当たりで読み込み、詰みまで絶対負けない手を選択
+    // 【ディープ・フルシミュレーション搭載エンジン】
     function makeCPUMove() {
       if (winModal.style.display === 'block') return;
 
       const allCandidates = [];
 
-      // 1. 盤上の全駒の選択肢
+      // 1. 盤上の全CPU駒の動かせる手（移動・重ね・取り）を全走査
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const stack = boardData[x][z];
@@ -1155,11 +1165,13 @@
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
                 let score = evaluateCandidateMove(topPiece, m.x, m.z);
-                const isSafe = testMoveIsCompletelySafeForSui(topPiece, m.x, m.z);
+                
+                // 完全な仮想盤面シミュレーションで反撃王手を深層検証
+                const isSafe = isMoveCompletelySafeDeepSimulation(topPiece, m.x, m.z);
 
-                if (!isSafe) score = -100000000; // 自爆手はマイナス1億（100%除外）
+                if (!isSafe) score = -1000000000; // 自爆手はマイナス10億（完全排除）
 
-                if (score > -90000000) {
+                if (score > -900000000) {
                   allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
                 }
               });
@@ -1168,23 +1180,24 @@
         }
       }
 
-      // 2. 持ち駒（あらた）の全選択肢
+      // 2. 手駒（あらた）を打つ全可能性も全走査
       p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
           let score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
-          const isSafe = testMoveIsCompletelySafeForSui(handPiece, m.x, m.z);
-          if (!isSafe) score = -100000000;
+          
+          const isSafe = isMoveCompletelySafeDeepSimulation(handPiece, m.x, m.z);
+          if (!isSafe) score = -1000000000;
 
-          if (score > -90000000) {
+          if (score > -900000000) {
             allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe });
           }
         });
       });
 
-      const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -90000000);
+      const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000000);
 
-      // 【完全詰み判定】万策尽きて絶対に死を免れない状態になるまで一切諦めない
+      // 【完全詰み判定】どんな手を指しても次の手で帥が取られる完全な詰み以外は絶対負けない
       if (perfectlySafeCandidates.length === 0) {
         winDesc.textContent = `CPUは完全な詰みを察知し、降参（投了）しました！あなたの勝利です！`;
         winModal.style.display = 'block';
@@ -1194,7 +1207,7 @@
 
       let chosenMove = null;
 
-      // 3. 学習知識（ナレッジ）を合成して最高の防衛・攻撃手を選択
+      // 3. クラウド上の永久成長ナレッジベース（学習値）を合成して最高の防衛手を選択
       perfectlySafeCandidates.forEach(c => {
         const origX = c.pieceData.gridX;
         const origZ = c.pieceData.gridZ;
@@ -1211,7 +1224,7 @@
         const futureHash = generateBoardHash();
         const learnedVal = cpuKnowledgeBase[futureHash] || 0;
 
-        const weight = (cpuLevel === 'HARD') ? 3.0 : 1.2;
+        const weight = (cpuLevel === 'HARD') ? 3.5 : 1.5;
         c.score += evaluateBoardState() * weight + learnedVal;
 
         targetStack.pop();
@@ -1235,7 +1248,7 @@
       isCPUThinking = false;
     }
 
-    // --- 【完全無欠の「待った」システム（スナップショットディープコピー復元）】 ---
+    // --- 【完全復元スナップショットメモ（待った機能）】 ---
     function saveState() {
       const state = {
         isPlayer1Turn,
@@ -1247,7 +1260,6 @@
           )
         )
       };
-      // JSONによるディープコピーで完全に分離されたメモリ領域に状態をスナップショット保存
       moveHistory.push(JSON.parse(JSON.stringify(state)));
       updateUndoButtonUI();
     }
@@ -1255,7 +1267,6 @@
     function restoreState(state) {
       winModal.style.display = 'none';
 
-      // 1. 盤上データをリセット
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           boardData[x][z] = [];
@@ -1266,7 +1277,6 @@
       p1HandPieces.forEach(p => { allPieceMap[p.id] = p; });
       p2HandPieces.forEach(p => { allPieceMap[p.id] = p; });
 
-      // 2. 手駒状態のディープ復元
       state.p1PiecesState.forEach(saved => {
         const piece = allPieceMap[saved.id];
         if (piece) {
@@ -1293,7 +1303,6 @@
         }
       });
 
-      // 3. 盤上スタックとメッシュ座標の完全再構築
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const idsInStack = state.boardGridIds[x][z];
@@ -1325,8 +1334,8 @@
 
       if (isVsCPU) {
         if (moveHistory.length >= 2) {
-          moveHistory.pop(); // CPUの手を破棄
-          const prevPlayerState = moveHistory.pop(); // あなたの手の直前の盤面を取り出す
+          moveHistory.pop();
+          const prevPlayerState = moveHistory.pop();
           restoreState(prevPlayerState);
         } else if (moveHistory.length === 1) {
           const initialState = moveHistory.pop();
@@ -1388,7 +1397,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 初級)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 初級・完全思考)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1403,7 +1412,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・永久成長)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・永久深層学習)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1643,7 +1652,7 @@
     }
 
     function executeMove(pieceData, targetX, targetZ, actionType) {
-      saveState(); // 完全スナップショットメモの作成
+      saveState();
 
       if (isVsCPU && isPlayer1Turn) {
         lastMoveEvalText = evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType);
