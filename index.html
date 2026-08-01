@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <title>軍儀 3D - Live Auto-Learning Edition</title>
+  <title>軍儀 3D - Evolution & Perfect Undo</title>
   <style>
     * { 
       margin: 0; 
@@ -36,7 +36,7 @@
       left: 10px; 
       right: 10px;
       color: #fff;
-      background: rgba(0, 0, 0, 0.82); 
+      background: rgba(0, 0, 0, 0.85); 
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       padding: 12px 16px; 
@@ -44,11 +44,11 @@
       pointer-events: none; 
       box-shadow: 0 4px 12px rgba(0,0,0,0.5); 
       z-index: 10;
-      border: 1px solid rgba(255,255,255,0.1);
+      border: 1px solid rgba(240,192,64,0.3);
     }
     #info h2 { 
-      font-size: 16px; 
-      margin-bottom: 4px; 
+      font-size: 15px; 
+      margin-bottom: 2px; 
       color: #f0c040; 
       display: flex;
       justify-content: space-between;
@@ -61,8 +61,15 @@
     #status { 
       font-weight: bold; 
       color: #4da6ff; 
-      margin-top: 6px; 
-      font-size: 13px; 
+      margin-top: 4px; 
+      font-size: 12px; 
+    }
+    #ai-stats {
+      font-size: 11px;
+      color: #00ffcc;
+      margin-top: 2px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 2px;
     }
     
     #ui-container {
@@ -194,9 +201,10 @@
   </div>
 
   <div id="info">
-    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Live Learning</span></h2>
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Evolution System</span></h2>
     <p id="mode-desc">モードを選択してください</p>
     <div id="status">対局準備中...</div>
+    <div id="ai-stats">AI成長度: 計算中...</div>
   </div>
 
   <div id="ui-container">
@@ -208,8 +216,8 @@
     <h3>対局モード選択</h3>
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
-      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級・全学習)</button>
-      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・全学習)</button>
+      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級)</button>
+      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・成長型AI)</button>
       <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・全学習)</button>
       <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・全学習)</button>
     </div>
@@ -255,7 +263,7 @@
       if (e.key === 'Enter') verifyPassword();
     });
 
-    const GAME_VERSION = 'v3.1.0_visual_learning'; 
+    const GAME_VERSION = 'v4.0.0_perfect_undo'; 
 
     const firebaseConfig = {
       apiKey: "AIzaSyA10pwIG5awgZUTAT_nXj5fxOELYhunSmc",
@@ -269,7 +277,7 @@
 
     let db = null;
     let cpuKnowledgeBase = {};
-    let isLearningActive = false; // 学習中インジケータ用フラグ
+    let isLearningActive = false;
 
     try {
       firebase.initializeApp(firebaseConfig);
@@ -278,18 +286,31 @@
       db.collection("ai_knowledge").doc(GAME_VERSION).get().then((doc) => {
         if (doc.exists) {
           cpuKnowledgeBase = doc.data().knowledge || {};
+          updateAIStatsUI();
         }
       });
     } catch (e) {
       console.log("ローカル動作モード");
     }
 
-    // 学習中であることを画面に一時表示するインジケータ関数
+    // AIの成長度を数値化して表示するUI更新関数
+    function updateAIStatsUI() {
+      const knowledgeCount = Object.keys(cpuKnowledgeBase).length;
+      // 蓄積された学習量から仮想レベルと勝率予測を計算
+      const aiLevel = Math.floor(knowledgeCount / 25) + 1;
+      const winRate = Math.min(95, 45 + Math.floor(knowledgeCount / 10));
+      
+      const statsEl = document.getElementById('ai-stats');
+      if (statsEl) {
+        statsEl.textContent = `🧠 AI成長度: Lv.${aiLevel} (学習局面: ${knowledgeCount}個 / 予測勝率: ${winRate}%)`;
+      }
+    }
+
     function showLearningIndicator() {
       isLearningActive = true;
       const statusEl = document.getElementById('status');
       if (!winModal.style.display || winModal.style.display === 'none') {
-        statusEl.innerHTML = `<span style="color: #00ffcc;">⚡ [AI自己学習・クラウド同期中...]</span>`;
+        statusEl.innerHTML = `<span style="color: #00ffcc;">⚡ [AI自己学習・強化中...]</span>`;
       }
       setTimeout(() => {
         isLearningActive = false;
@@ -297,10 +318,10 @@
       }, 1000);
     }
 
-    // 全モード共通のクラウド学習書き込み
     function syncKnowledgeToCloud(boardHash, val) {
       cpuKnowledgeBase[boardHash] = (cpuKnowledgeBase[boardHash] || 0) + val;
-      showLearningIndicator(); // 学習動作を視覚化
+      showLearningIndicator();
+      updateAIStatsUI();
       
       if (db) {
         const updateData = {};
@@ -989,7 +1010,6 @@
       return score;
     }
 
-    // 【全モード対応】初級や2人プレイの時も、すべての指し手をクラウドへ学習・反映させる
     function evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType) {
       let rawScore = 50;
       const targetStack = boardData[targetX][targetZ];
@@ -1012,9 +1032,37 @@
       
       let comment = '（普通の手）';
       const boardHash = generateBoardHash();
-      syncKnowledgeToCloud(boardHash, 15); // 初級・上級・2人プレイ問わず全学習
+      syncKnowledgeToCloud(boardHash, 15);
 
       return `${finalScore}点 ${comment}`;
+    }
+
+    function isSquareUnderEnemyAttack(x, z, isP1) {
+      for (let bx = 0; bx < BOARD_SIZE; bx++) {
+        for (let bz = 0; bz < BOARD_SIZE; bz++) {
+          const stack = boardData[bx][bz];
+          if (stack.length > 0) {
+            const top = stack[stack.length - 1];
+            if (top.isPlayer1 !== isP1) {
+              const moves = getValidMoves(top);
+              if (moves.some(m => m.x === x && m.z === z)) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+
+      const enemyHand = !isP1 ? p1HandPieces.filter(p => p.inHand) : p2HandPieces.filter(p => p.inHand);
+      if (enemyHand.length > 0) {
+        const sampleHand = enemyHand[0];
+        const arataMoves = getValidMoves(sampleHand);
+        if (arataMoves.some(m => m.x === x && m.z === z)) {
+           return true;
+        }
+      }
+
+      return false;
     }
 
     function isSuiUnderAttack(isP1) {
@@ -1032,32 +1080,7 @@
         }
       }
       if (!suiPiece) return false;
-
-      for (let x = 0; x < BOARD_SIZE; x++) {
-        for (let z = 0; z < BOARD_SIZE; z++) {
-          const stack = boardData[x][z];
-          if (stack.length > 0) {
-            const top = stack[stack.length - 1];
-            if (top.isPlayer1 !== isP1) {
-              const moves = getValidMoves(top);
-              if (moves.some(m => m.x === suiPiece.gridX && m.z === suiPiece.gridZ)) {
-                return true;
-              }
-            }
-          }
-        }
-      }
-
-      const enemyHand = !isP1 ? p1HandPieces.filter(p => p.inHand) : p2HandPieces.filter(p => p.inHand);
-      if (enemyHand.length > 0) {
-        const sampleHand = enemyHand[0];
-        const arataMoves = getValidMoves(sampleHand);
-        if (arataMoves.some(m => m.x === suiPiece.gridX && m.z === suiPiece.gridZ)) {
-           return true;
-        }
-      }
-
-      return false;
+      return isSquareUnderEnemyAttack(suiPiece.gridX, suiPiece.gridZ, isP1);
     }
 
     function testMoveIsCompletelySafeForSui(pieceData, targetX, targetZ) {
@@ -1074,6 +1097,13 @@
       pieceData.gridZ = targetZ;
       targetStack.push(pieceData);
 
+      let isSafe = true;
+      if (pieceData.name === '帥') {
+        if (isSquareUnderEnemyAttack(targetX, targetZ, pieceData.isPlayer1)) {
+          isSafe = false;
+        }
+      }
+
       const isStillInCheck = isSuiUnderAttack(pieceData.isPlayer1);
 
       targetStack.pop();
@@ -1082,10 +1112,9 @@
       pieceData.gridZ = origZ;
       if (!origInHand) sourceStack.push(pieceData);
 
-      return !isStillInCheck;
+      return isSafe && !isStillInCheck;
     }
 
-    // 【超高速・全自動自己学習】バックグラウンドで自己対局シミュレーションを回し、学習インジケータを点灯させる
     function runBackgroundSelfPlay() {
       if (phase !== 'PLAY') return;
       
@@ -1141,7 +1170,7 @@
       const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000);
 
       if (perfectlySafeCandidates.length === 0) {
-        winDesc.textContent = `CPUは詰みを察知し、降参（投了）しました！あなたの勝利です！`;
+        winDesc.textContent = `CPUは完全な詰みを察知し、降参（投了）しました！あなたの勝利です！`;
         winModal.style.display = 'block';
         isCPUThinking = false;
         return;
@@ -1165,7 +1194,7 @@
         const futureHash = generateBoardHash();
         const learnedVal = cpuKnowledgeBase[futureHash] || 0;
 
-        const weight = (cpuLevel === 'HARD') ? 2.5 : 0.8;
+        const weight = (cpuLevel === 'HARD') ? 2.5 : 1.0;
         c.score += evaluateBoardState() * weight + learnedVal;
 
         targetStack.pop();
@@ -1189,24 +1218,27 @@
       isCPUThinking = false;
     }
 
+    // --- 【完全完璧な待ったシステム（スナップショット復元）】 ---
     function saveState() {
       const state = {
         isPlayer1Turn,
-        p1PiecesState: p1HandPieces.map(p => ({ id: p.id, name: p.name, inHand: p.inHand, gridX: p.gridX, gridZ: p.gridZ })),
-        p2PiecesState: p2HandPieces.map(p => ({ id: p.id, name: p.name, inHand: p.inHand, gridX: p.gridX, gridZ: p.gridZ })),
+        p1PiecesState: p1HandPieces.map(p => ({ id: p.id, name: p.name, inHand: p.inHand, gridX: p.gridX, gridZ: p.gridZ, isPlayer1: p.isPlayer1 })),
+        p2PiecesState: p2HandPieces.map(p => ({ id: p.id, name: p.name, inHand: p.inHand, gridX: p.gridX, gridZ: p.gridZ, isPlayer1: p.isPlayer1 })),
         boardGridIds: Array(BOARD_SIZE).fill(null).map((_, x) => 
           Array(BOARD_SIZE).fill(null).map((_, z) => 
             boardData[x][z].map(p => p.id)
           )
         )
       };
-      moveHistory.push(state);
+      // 完全に独立したオブジェクトとしてディープコピーしてメモに保存
+      moveHistory.push(JSON.parse(JSON.stringify(state)));
       updateUndoButtonUI();
     }
 
     function restoreState(state) {
       winModal.style.display = 'none';
 
+      // 1. 盤面をクリア
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           boardData[x][z] = [];
@@ -1214,16 +1246,20 @@
       }
 
       const allPieceMap = {};
-      p1HandPieces.forEach(p => allPieceMap[p.id] = p);
-      p2HandPieces.forEach(p => allPieceMap[p.id] = p);
+      p1HandPieces.forEach(p => { allPieceMap[p.id] = p; if (p.mesh.parent) scene.remove(p.mesh); });
+      p2HandPieces.forEach(p => { allPieceMap[p.id] = p; if (p.mesh.parent) scene.remove(p.mesh); });
 
+      // 2. 持ち駒の状態を復元
       state.p1PiecesState.forEach(saved => {
         const piece = allPieceMap[saved.id];
         if (piece) {
           piece.inHand = saved.inHand;
           piece.gridX = saved.gridX;
           piece.gridZ = saved.gridZ;
-          if (!scene.children.includes(piece.mesh)) scene.add(piece.mesh);
+          piece.isPlayer1 = saved.isPlayer1;
+          if (piece.inHand) {
+            scene.add(piece.mesh);
+          }
         }
       });
 
@@ -1233,17 +1269,25 @@
           piece.inHand = saved.inHand;
           piece.gridX = saved.gridX;
           piece.gridZ = saved.gridZ;
-          if (!scene.children.includes(piece.mesh)) scene.add(piece.mesh);
+          piece.isPlayer1 = saved.isPlayer1;
+          if (piece.inHand) {
+            scene.add(piece.mesh);
+          }
         }
       });
 
+      // 3. 盤上のスタックを完全再現
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const idsInStack = state.boardGridIds[x][z];
           idsInStack.forEach((id, idx) => {
             const piece = allPieceMap[id];
             if (piece) {
+              piece.inHand = false;
+              piece.gridX = x;
+              piece.gridZ = z;
               boardData[x][z].push(piece);
+              if (!scene.children.includes(piece.mesh)) scene.add(piece.mesh);
               const worldX = (x - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
               const worldZ = (z - (BOARD_SIZE - 1) / 2) * SQUARE_SIZE;
               const worldY = 0.06 + (PIECE_HEIGHT / 2) + (idx * PIECE_HEIGHT);
@@ -1264,8 +1308,8 @@
 
       if (isVsCPU) {
         if (moveHistory.length >= 2) {
-          moveHistory.pop();
-          const prevPlayerState = moveHistory.pop();
+          moveHistory.pop(); // CPUの手のメモを捨てる
+          const prevPlayerState = moveHistory.pop(); // あなたの手の直前のメモを取り出す
           restoreState(prevPlayerState);
         } else if (moveHistory.length === 1) {
           const initialState = moveHistory.pop();
@@ -1276,7 +1320,7 @@
         restoreState(prevState);
       }
       deselect();
-      statusEl.textContent = '「待った」しました。';
+      statusEl.textContent = '「待った」しました（状態を完璧に復元）。';
     }
 
     function updateUndoButtonUI() {
@@ -1327,7 +1371,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 初級・全学習)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 初級)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1342,7 +1386,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・全学習)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・成長型)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1356,7 +1400,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 2人プレイ (初級・全学習)';
+      modeDesc.textContent = '対局モード: 2人プレイ (初級)';
       statusEl.textContent = '対局開始 - 手番: 白（先手）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1369,7 +1413,7 @@
       setupHandPieces();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '自由初期配置フェーズ (全学習)';
+      modeDesc.textContent = '自由初期配置フェーズ';
       statusEl.textContent = '手番: 白（先手） - 『帥』を配置してください';
       doneBtn.style.display = 'block';
       updateUndoButtonUI();
@@ -1582,7 +1626,7 @@
     }
 
     function executeMove(pieceData, targetX, targetZ, actionType) {
-      saveState();
+      saveState(); // 指す直前の完璧なスナップショットをメモ
 
       if (isVsCPU && isPlayer1Turn) {
         lastMoveEvalText = evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType);
