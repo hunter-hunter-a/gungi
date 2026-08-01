@@ -256,7 +256,7 @@
       if (e.key === 'Enter') verifyPassword();
     });
 
-    const GAME_VERSION = 'v2.1.0_strict_safety'; 
+    const GAME_VERSION = 'v2.1.1_touch_fix'; 
 
     const firebaseConfig = {
       apiKey: "AIzaSyA10pwIG5awgZUTAT_nXj5fxOELYhunSmc",
@@ -1011,7 +1011,6 @@
       return `${finalScore}点 ${comment}`;
     }
 
-    // 指定されたプレイヤーの帥が、敵のいかなる攻撃（盤上駒・手駒の新）に晒されているか厳密に判定
     function isSuiUnderAttack(isP1) {
       let suiPiece = null;
       for (let x = 0; x < BOARD_SIZE; x++) {
@@ -1055,7 +1054,6 @@
       return false;
     }
 
-    // 【厳密改修】仮にこの手を指した場合、移動後の帥が敵の攻撃範囲に一切入らないか（二段階完全安全チェック）
     function testMoveIsCompletelySafeForSui(pieceData, targetX, targetZ) {
       const origX = pieceData.gridX;
       const origZ = pieceData.gridZ;
@@ -1070,7 +1068,6 @@
       pieceData.gridZ = targetZ;
       targetStack.push(pieceData);
 
-      // 1. 王手が解除されているか ＆ 2. 移動先のマス自体が敵の利きに一切入っていないか
       const isStillInCheck = isSuiUnderAttack(pieceData.isPlayer1);
 
       targetStack.pop();
@@ -1132,7 +1129,6 @@
 
       const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000);
 
-      // 【完全詰み・降参判定】安全に指せる手が一切ない場合は潔く投了
       if (perfectlySafeCandidates.length === 0) {
         winDesc.textContent = `CPUは詰みを察知し、降参（投了）しました！あなたの勝利です！`;
         winModal.style.display = 'block';
@@ -1386,13 +1382,15 @@
       return null;
     }
 
+    // 【完全修正】キャンバスの表示サイズと内部描画解像度のズレ、スクويات座標を完璧に補正するタッチ処理
     function handlePointerInput(clientX, clientY) {
       if (modeModal.style.display === 'block' || actionModal.style.display === 'block' || winModal.style.display === 'block' || isAnimatingCamera || isCPUThinking) return;
 
       if (isVsCPU && !isPlayer1Turn) return;
 
-      mouse.x = (clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
 
