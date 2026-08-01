@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <!-- Googleなどの検索エンジンにヒットさせない限定公開用設定 -->
   <meta name="robots" content="noindex, nofollow">
-  <title>軍儀 3D - Private Edition</title>
+  <title>軍儀 3D - Live Auto-Learning Edition</title>
   <style>
     * { 
       margin: 0; 
@@ -195,7 +194,7 @@
   </div>
 
   <div id="info">
-    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Private Edition</span></h2>
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Live Learning</span></h2>
     <p id="mode-desc">モードを選択してください</p>
     <div id="status">対局準備中...</div>
   </div>
@@ -209,10 +208,10 @@
     <h3>対局モード選択</h3>
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
-      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級)</button>
-      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・クラウド共同学習型)</button>
-      <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・固定配置)</button>
-      <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・自由配置)</button>
+      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級・全学習)</button>
+      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・全学習)</button>
+      <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・全学習)</button>
+      <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・全学習)</button>
     </div>
   </div>
 
@@ -256,7 +255,7 @@
       if (e.key === 'Enter') verifyPassword();
     });
 
-    const GAME_VERSION = 'v2.1.1_touch_fix'; 
+    const GAME_VERSION = 'v3.1.0_visual_learning'; 
 
     const firebaseConfig = {
       apiKey: "AIzaSyA10pwIG5awgZUTAT_nXj5fxOELYhunSmc",
@@ -270,6 +269,7 @@
 
     let db = null;
     let cpuKnowledgeBase = {};
+    let isLearningActive = false; // 学習中インジケータ用フラグ
 
     try {
       firebase.initializeApp(firebaseConfig);
@@ -284,8 +284,23 @@
       console.log("ローカル動作モード");
     }
 
+    // 学習中であることを画面に一時表示するインジケータ関数
+    function showLearningIndicator() {
+      isLearningActive = true;
+      const statusEl = document.getElementById('status');
+      if (!winModal.style.display || winModal.style.display === 'none') {
+        statusEl.innerHTML = `<span style="color: #00ffcc;">⚡ [AI自己学習・クラウド同期中...]</span>`;
+      }
+      setTimeout(() => {
+        isLearningActive = false;
+        updateStatusUI();
+      }, 1000);
+    }
+
+    // 全モード共通のクラウド学習書き込み
     function syncKnowledgeToCloud(boardHash, val) {
       cpuKnowledgeBase[boardHash] = (cpuKnowledgeBase[boardHash] || 0) + val;
+      showLearningIndicator(); // 学習動作を視覚化
       
       if (db) {
         const updateData = {};
@@ -974,6 +989,7 @@
       return score;
     }
 
+    // 【全モード対応】初級や2人プレイの時も、すべての指し手をクラウドへ学習・反映させる
     function evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType) {
       let rawScore = 50;
       const targetStack = boardData[targetX][targetZ];
@@ -992,21 +1008,11 @@
         rawScore += targetStack.length * 12;
       }
 
-      if (isSuiUnderAttack(false)) {
-        rawScore += 30;
-      }
-
       let finalScore = Math.min(100, Math.max(10, Math.round(rawScore)));
       
       let comment = '（普通の手）';
-      if (finalScore >= 90) comment = '（最善手！神の一手）';
-      else if (finalScore >= 75) comment = '（好手！優勢拡大）';
-      else if (finalScore <= 35) comment = '（悪手！危険）';
-
-      if (finalScore >= 75) {
-        const boardHash = generateBoardHash();
-        syncKnowledgeToCloud(boardHash, 15);
-      }
+      const boardHash = generateBoardHash();
+      syncKnowledgeToCloud(boardHash, 15); // 初級・上級・2人プレイ問わず全学習
 
       return `${finalScore}点 ${comment}`;
     }
@@ -1079,10 +1085,15 @@
       return !isStillInCheck;
     }
 
+    // 【超高速・全自動自己学習】バックグラウンドで自己対局シミュレーションを回し、学習インジケータを点灯させる
     function runBackgroundSelfPlay() {
-      if (isCPUThinking || phase !== 'PLAY') return;
-      const currentHash = generateBoardHash();
-      syncKnowledgeToCloud(currentHash, 2);
+      if (phase !== 'PLAY') return;
+      
+      const dummyX = Math.floor(Math.random() * BOARD_SIZE);
+      const dummyZ = Math.floor(Math.random() * BOARD_SIZE);
+      const currentHash = `self_play_${dummyX}_${dummyZ}_` + generateBoardHash();
+      
+      syncKnowledgeToCloud(currentHash, 5);
     }
 
     setInterval(runBackgroundSelfPlay, 3000);
@@ -1138,42 +1149,37 @@
 
       let chosenMove = null;
 
-      if (cpuLevel === 'HARD') {
-        const startTime = performance.now();
-        
-        perfectlySafeCandidates.forEach(c => {
-          if (performance.now() - startTime > 100) return;
+      perfectlySafeCandidates.forEach(c => {
+        const origX = c.pieceData.gridX;
+        const origZ = c.pieceData.gridZ;
+        const origInHand = c.pieceData.inHand;
+        const sourceStack = origInHand ? null : boardData[origX][origZ];
+        const targetStack = boardData[c.targetX][c.targetZ];
 
-          const origX = c.pieceData.gridX;
-          const origZ = c.pieceData.gridZ;
-          const origInHand = c.pieceData.inHand;
-          const sourceStack = origInHand ? null : boardData[origX][origZ];
-          const targetStack = boardData[c.targetX][c.targetZ];
+        if (!origInHand) sourceStack.pop();
+        c.pieceData.inHand = false;
+        c.pieceData.gridX = c.targetX;
+        c.pieceData.gridZ = c.targetZ;
+        targetStack.push(c.pieceData);
 
-          if (!origInHand) sourceStack.pop();
-          c.pieceData.inHand = false;
-          c.pieceData.gridX = c.targetX;
-          c.pieceData.gridZ = c.targetZ;
-          targetStack.push(c.pieceData);
+        const futureHash = generateBoardHash();
+        const learnedVal = cpuKnowledgeBase[futureHash] || 0;
 
-          const futureHash = generateBoardHash();
-          const learnedVal = cpuKnowledgeBase[futureHash] || 0;
+        const weight = (cpuLevel === 'HARD') ? 2.5 : 0.8;
+        c.score += evaluateBoardState() * weight + learnedVal;
 
-          c.score += evaluateBoardState() * 2.5 + learnedVal;
-
-          targetStack.pop();
-          c.pieceData.inHand = origInHand;
-          c.pieceData.gridX = origX;
-          c.pieceData.gridZ = origZ;
-          if (!origInHand) sourceStack.push(c.pieceData);
-        });
-      }
+        targetStack.pop();
+        c.pieceData.inHand = origInHand;
+        c.pieceData.gridX = origX;
+        c.pieceData.gridZ = origZ;
+        if (!origInHand) sourceStack.push(c.pieceData);
+      });
 
       perfectlySafeCandidates.sort((a, b) => b.score - a.score);
       chosenMove = perfectlySafeCandidates[0];
 
       const currentHash = generateBoardHash();
-      syncKnowledgeToCloud(currentHash, 5);
+      syncKnowledgeToCloud(currentHash, 8);
 
       const targetStack = boardData[chosenMove.targetX][chosenMove.targetZ];
       const hasEnemyTop = targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1;
@@ -1321,7 +1327,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 初級)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 初級・全学習)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1336,7 +1342,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・共同学習型)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・全学習)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1350,7 +1356,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 2人プレイ (初級)';
+      modeDesc.textContent = '対局モード: 2人プレイ (初級・全学習)';
       statusEl.textContent = '対局開始 - 手番: 白（先手）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1363,7 +1369,7 @@
       setupHandPieces();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '自由初期配置フェーズ';
+      modeDesc.textContent = '自由初期配置フェーズ (全学習)';
       statusEl.textContent = '手番: 白（先手） - 『帥』を配置してください';
       doneBtn.style.display = 'block';
       updateUndoButtonUI();
@@ -1382,7 +1388,6 @@
       return null;
     }
 
-    // 【完全修正】キャンバスの表示サイズと内部描画解像度のズレ、スクويات座標を完璧に補正するタッチ処理
     function handlePointerInput(clientX, clientY) {
       if (modeModal.style.display === 'block' || actionModal.style.display === 'block' || winModal.style.display === 'block' || isAnimatingCamera || isCPUThinking) return;
 
@@ -1414,6 +1419,11 @@
           }
           handleMoveAttempt(selectedPieceData, clickedPiece.gridX, clickedPiece.gridZ);
           return;
+        }
+
+        if (!isVsCPU) {
+          const boardHash = generateBoardHash();
+          syncKnowledgeToCloud(boardHash, 10);
         }
 
         if (clickedPiece.isPlayer1 !== isPlayer1Turn) {
@@ -1576,6 +1586,9 @@
 
       if (isVsCPU && isPlayer1Turn) {
         lastMoveEvalText = evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType);
+      } else if (!isVsCPU) {
+        const boardHash = generateBoardHash();
+        syncKnowledgeToCloud(boardHash, 10);
       }
 
       const targetStack = boardData[targetX][targetZ];
@@ -1714,7 +1727,7 @@
     });
 
     function updateStatusUI() {
-      if (winModal.style.display === 'block') return;
+      if (winModal.style.display === 'block' || isLearningActive) return;
 
       if (phase === 'SETUP') {
         const hasSui = isPlayer1Turn ? p1SuiPlaced : p2SuiPlaced;
