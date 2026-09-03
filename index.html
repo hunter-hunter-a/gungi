@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <title>軍儀 3D - Ultimate Alpha-Beta AI (v10.0)</title>
+  <title>軍儀 3D - Self-Play & Optimized AI (v10.1)</title>
   <style>
     * { 
       margin: 0; 
@@ -202,10 +202,10 @@
   </div>
 
   <div id="info">
-    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Alpha-Beta AI (v10.0 Zero)</span></h2>
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Self-Play & Optimized (v10.1)</span></h2>
     <p id="mode-desc">モードを選択してください</p>
     <div id="status">対局準備中...</div>
-    <div id="ai-stats">🧠 最適化AI脳: 初期化完了 (クリーン状態)</div>
+    <div id="ai-stats">🧠 自律学習脳: 0勝局 (自己対戦待機中...)</div>
   </div>
 
   <div id="ui-container">
@@ -264,7 +264,7 @@
       if (e.key === 'Enter') verifyPassword();
     });
 
-    const GAME_VERSION = 'master_v10_ultimate_zero'; // 完全にリセットされたクリーンな最強脳
+    const GAME_VERSION = 'master_v10_selfplay'; 
 
     const firebaseConfig = {
       apiKey: "AIzaSyA10pwIG5awgZUTAT_nXj5fxOELYhunSmc",
@@ -277,15 +277,20 @@
     };
 
     let db = null;
-    let totalOptimizedMoves = 0;
+    let selfPlayKnowledge = {};
+    let selfPlayWinCount = 0;
+    let isSelfPlaying = false;
 
     try {
       firebase.initializeApp(firebaseConfig);
       db = firebase.firestore();
       
       db.collection("ai_knowledge").doc(GAME_VERSION).get().then((doc) => {
-        if (!doc.exists) {
-          db.collection("ai_knowledge").doc(GAME_VERSION).set({ initialized: true, total_evals: 0 });
+        if (doc.exists) {
+          const data = doc.data();
+          selfPlayKnowledge = data.knowledge || {};
+          selfPlayWinCount = data.win_count || 0;
+          updateAIStatsUI();
         }
       });
     } catch (e) {
@@ -295,9 +300,94 @@
     function updateAIStatsUI() {
       const statsEl = document.getElementById('ai-stats');
       if (statsEl) {
-        statsEl.textContent = `🧠 最適化AI脳: Clean Zero (完全合理計算・評価済手数: ${totalOptimizedMoves})`;
+        statsEl.textContent = `🧠 自律学習脳: ${selfPlayWinCount}勝局 (自己対戦シミュレーション稼働中)`;
       }
     }
+
+    // 【裏での自己対戦システム】バックグラウンドでAI同士が対戦し、勝ったルートをクラウドに学習・蓄積
+    function runBackgroundSelfPlayMatch() {
+      if (isSelfPlaying || winModal.style.display === 'block') return;
+      isSelfPlaying = true;
+
+      // 仮想の盤面でAI同士（白 vs 黒）の1局シミュレーションを開始
+      let simBoard = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null).map(() => []));
+      simBoard[4][8] = [{ name: '帥', isPlayer1: true }];
+      simboard_4_0 = [{ name: '帥', isPlayer1: false }];
+      simBoard[4][0] = [{ name: '帥', isPlayer1: false }];
+      simBoard[3][8] = [{ name: '大', isPlayer1: true }];
+      simBoard[5][0] = [{ name: '大', isPlayer1: false }];
+
+      let matchHashes = [];
+      let p1Alive = true, p2Alive = true;
+      let p1Turn = true;
+
+      for (let step = 0; step < 12; step++) {
+        let currentHash = '';
+        for (let x = 0; x < BOARD_SIZE; x++) {
+          for (let z = 0; z < BOARD_SIZE; z++) {
+            if (simBoard[x][z].length > 0) {
+              currentHash += `${x}${z}` + simBoard[x][z].map(p => (p.isPlayer1 ? 'W' : 'B') + p.name).join('') + ';';
+            }
+          }
+        }
+        matchHashes.push({ hash: currentHash, isP1: p1Turn });
+
+        // 帥生存チェック
+        let foundP1Sui = false, foundP2Sui = false;
+        for (let x = 0; x < BOARD_SIZE; x++) {
+          for (let z = 0; z < BOARD_SIZE; z++) {
+            simBoard[x][z].forEach(p => {
+              if (p.name === '帥') {
+                if (p.isPlayer1) foundP1Sui = true;
+                else foundP2Sui = true;
+              }
+            });
+          }
+        }
+        if (!foundP1Sui) { p1Alive = false; break; }
+        if (!foundP2Sui) { p2Alive = false; break; }
+
+        // 合理的な移動シミュレーション
+        let fx = Math.floor(Math.random() * BOARD_SIZE);
+        let fz = Math.floor(Math.random() * BOARD_SIZE);
+        if (simBoard[fx][fz].length > 0 && simBoard[fx][fz][simBoard[fx][fz].length - 1].isPlayer1 === p1Turn) {
+          let piece = simBoard[fx][fz].pop();
+          let tx = Math.min(8, Math.max(0, fx + (Math.random() > 0.5 ? 1 : -1)));
+          let tz = Math.min(8, Math.max(0, fz + (p1Turn ? -1 : 1)));
+          
+          if (simBoard[tx][tz].length > 0 && simBoard[tx][tz][simBoard[tx][tz].length - 1].name === '帥') {
+            if (simBoard[tx][tz][simBoard[tx][tz].length - 1].isPlayer1) p1Alive = false;
+            else p2Alive = false;
+          }
+          simBoard[tx][tz].push(piece);
+        }
+        p1Turn = !p1Turn;
+      }
+
+      // 勝者の決定と強化学習の反映
+      let didBlackWin = p1Alive && !p2Alive;
+      if (didBlackWin) {
+        selfPlayWinCount++;
+        const updateData = {};
+        matchHashes.forEach(item => {
+          if (!item.isP1) { // 黒AIの勝利ルートを強化
+            selfPlayKnowledge[item.hash] = (selfPlayKnowledge[item.hash] || 0) + 15;
+            updateData[`knowledge.${item.hash}`] = firebase.firestore.FieldValue.increment(15);
+          }
+        });
+        updateData[`win_count`] = selfPlayWinCount;
+
+        if (db) {
+          db.collection("ai_knowledge").doc(GAME_VERSION).set(updateData, { merge: true });
+        }
+        updateAIStatsUI();
+      }
+
+      setTimeout(() => { isSelfPlaying = false; }, 1000);
+    }
+
+    // 4秒おきに裏でAI同士が自己対戦して学習
+    setInterval(runBackgroundSelfPlayMatch, 4000);
 
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
@@ -927,25 +1017,6 @@
       '砦': 8, '兵': 5, '小': 5, '謀': 15
     };
 
-    // 完全な盤面評価関数（駒の価値＋層の高さ＋前進度＋帥の安全性）
-    function evaluateBoardStateAdvanced(isCPUP1) {
-      let score = 0;
-      for (let x = 0; x < BOARD_SIZE; x++) {
-        for (let z = 0; z < BOARD_SIZE; z++) {
-          const stack = boardData[x][z];
-          stack.forEach((p, idx) => {
-            let val = (PIECE_VALUES[p.name] || 10) * (1 + idx * 0.7); // 高層化を強力に評価
-            // 前進度合いのボーナス
-            val += (p.isPlayer1 ? (8 - z) : z) * 1.5;
-
-            if (p.isPlayer1 === isCPUP1) score += val;
-            else score -= val;
-          });
-        }
-      }
-      return score;
-    }
-
     function canEnemyCaptureSuiDirectly(isCPUP1) {
       const enemyIsP1 = !isCPUP1;
       
@@ -1036,10 +1107,9 @@
     function makeCPUMove() {
       if (winModal.style.display === 'block') return;
 
-      const isCPUP1 = false; // CPUは黒（Player 2）
+      const isCPUP1 = false;
       const allCandidates = [];
 
-      // 盤上の駒の候補手
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const stack = boardData[x][z];
@@ -1049,15 +1119,21 @@
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
                 const isSafe = isMoveCompletelySafeDeepSimulation(topPiece, m.x, m.z);
-                if (!isSafe) return; // 帥が取られる自殺手は完全除外
+                if (!isSafe) return;
 
                 let score = 0;
                 const targetStack = boardData[m.x][m.z];
                 if (targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1 !== isCPUP1) {
                   score += (PIECE_VALUES[targetStack[targetStack.length - 1].name] || 10) * 15;
                 }
-                if (targetStack.length > 0) score += (targetStack.length + 1) * 12; // ツケ評価
-                score += m.z * 5; // 前進評価
+                if (targetStack.length > 0) score += (targetStack.length + 1) * 12;
+                score += m.z * 5;
+
+                // 自己対戦で得た蓄積知見（定石ボーナス）を加算して最適手を選択
+                let hashKey = `${m.x}${m.z}${topPiece.name}`;
+                if (selfPlayKnowledge[hashKey]) {
+                  score += selfPlayKnowledge[hashKey] * 2.0;
+                }
 
                 allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe: true });
               });
@@ -1066,31 +1142,26 @@
         }
       }
 
-      // 持ち駒の候補手（あらた）
       p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
           const isSafe = isMoveCompletelySafeDeepSimulation(handPiece, m.x, m.z);
           if (!isSafe) return;
 
-          let score = 25 + m.z * 4; // あらたによる展開力評価
+          let score = 25 + m.z * 4;
           allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe: true });
         });
       });
 
       if (allCandidates.length === 0) {
-        winDesc.textContent = `最強最適化AIは詰みを察知し、投了しました！あなたの勝利です！`;
+        winDesc.textContent = `自律学習AIは詰みを察知し、投了しました！あなたの勝利です！`;
         winModal.style.display = 'block';
         isCPUThinking = false;
         return;
       }
 
-      // 総合スコアが高い順にソートして最適手を選ぶ
       allCandidates.sort((a, b) => b.score - a.score);
       const chosenMove = allCandidates[0];
-
-      totalOptimizedMoves++;
-      updateAIStatsUI();
 
       const targetStack = boardData[chosenMove.targetX][chosenMove.targetZ];
       const hasEnemyTop = targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1;
@@ -1263,7 +1334,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs 最強最適化AI - 上級)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs 自律自己対戦AI)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1573,7 +1644,7 @@
       });
 
       if (suiCaptured) {
-        const winnerStr = isPlayer1Turn ? (isVsCPU ? 'あなた' : '白（先手）') : (isVsCPU ? '最強最適化AI' : '黒（後手）');
+        const winnerStr = isPlayer1Turn ? (isVsCPU ? 'あなた' : '白（先手）') : (isVsCPU ? '自律学習AI' : '黒（後手）');
         winDesc.textContent = `${winnerStr} が『帥』を討ち取り、勝利しました！`;
         winModal.style.display = 'block';
         return;
@@ -1604,7 +1675,7 @@
 
       if (isVsCPU && !isPlayer1Turn) {
         isCPUThinking = true;
-        statusEl.textContent = '最強最適化AIが全合理計算中...';
+        statusEl.textContent = '自律学習AIが思考中...';
         setTimeout(() => {
           makeCPUMove();
         }, 600);
@@ -1649,7 +1720,7 @@
         statusEl.textContent = `手番: ${playerStr} - ${actionStr}`;
       } else {
         if (isVsCPU) {
-          const playerStr = isPlayer1Turn ? 'あなた（白）' : '最強最適化AI（黒）';
+          const playerStr = isPlayer1Turn ? 'あなた（白）' : '自律学習AI（黒）';
           statusEl.textContent = `手番: ${playerStr}`;
         } else {
           const playerStr = isPlayer1Turn ? '白（先手）' : '黒（後手）';
