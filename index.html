@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <title>軍儀 3D - Self-Play & Optimized AI (v10.1)</title>
+  <title>軍儀 3D - Active Self-Play AI (v10.2)</title>
   <style>
     * { 
       margin: 0; 
@@ -202,10 +202,10 @@
   </div>
 
   <div id="info">
-    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Self-Play & Optimized (v10.1)</span></h2>
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Active Self-Play (v10.2)</span></h2>
     <p id="mode-desc">モードを選択してください</p>
     <div id="status">対局準備中...</div>
-    <div id="ai-stats">🧠 自律学習脳: 0勝局 (自己対戦待機中...)</div>
+    <div id="ai-stats">🧠 自律学習脳: 同期中...</div>
   </div>
 
   <div id="ui-container">
@@ -218,7 +218,7 @@
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
       <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級)</button>
-      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs 最強最適化AI - 上級)</button>
+      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs 自律学習AI - 上級)</button>
       <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・全機能)</button>
       <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・全機能)</button>
     </div>
@@ -291,10 +291,14 @@
           selfPlayKnowledge = data.knowledge || {};
           selfPlayWinCount = data.win_count || 0;
           updateAIStatsUI();
+        } else {
+          db.collection("ai_knowledge").doc(GAME_VERSION).set({ win_count: 0, knowledge: {} });
+          updateAIStatsUI();
         }
       });
     } catch (e) {
       console.log("ローカル動作モード");
+      updateAIStatsUI();
     }
 
     function updateAIStatsUI() {
@@ -312,7 +316,6 @@
       // 仮想の盤面でAI同士（白 vs 黒）の1局シミュレーションを開始
       let simBoard = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null).map(() => []));
       simBoard[4][8] = [{ name: '帥', isPlayer1: true }];
-      simboard_4_0 = [{ name: '帥', isPlayer1: false }];
       simBoard[4][0] = [{ name: '帥', isPlayer1: false }];
       simBoard[3][8] = [{ name: '大', isPlayer1: true }];
       simBoard[5][0] = [{ name: '大', isPlayer1: false }];
@@ -332,7 +335,6 @@
         }
         matchHashes.push({ hash: currentHash, isP1: p1Turn });
 
-        // 帥生存チェック
         let foundP1Sui = false, foundP2Sui = false;
         for (let x = 0; x < BOARD_SIZE; x++) {
           for (let z = 0; z < BOARD_SIZE; z++) {
@@ -347,7 +349,6 @@
         if (!foundP1Sui) { p1Alive = false; break; }
         if (!foundP2Sui) { p2Alive = false; break; }
 
-        // 合理的な移動シミュレーション
         let fx = Math.floor(Math.random() * BOARD_SIZE);
         let fz = Math.floor(Math.random() * BOARD_SIZE);
         if (simBoard[fx][fz].length > 0 && simBoard[fx][fz][simBoard[fx][fz].length - 1].isPlayer1 === p1Turn) {
@@ -364,13 +365,12 @@
         p1Turn = !p1Turn;
       }
 
-      // 勝者の決定と強化学習の反映
       let didBlackWin = p1Alive && !p2Alive;
       if (didBlackWin) {
         selfPlayWinCount++;
         const updateData = {};
         matchHashes.forEach(item => {
-          if (!item.isP1) { // 黒AIの勝利ルートを強化
+          if (!item.isP1) {
             selfPlayKnowledge[item.hash] = (selfPlayKnowledge[item.hash] || 0) + 15;
             updateData[`knowledge.${item.hash}`] = firebase.firestore.FieldValue.increment(15);
           }
@@ -383,11 +383,11 @@
         updateAIStatsUI();
       }
 
-      setTimeout(() => { isSelfPlaying = false; }, 1000);
+      setTimeout(() => { isSelfPlaying = false; }, 500);
     }
 
-    // 4秒おきに裏でAI同士が自己対戦して学習
-    setInterval(runBackgroundSelfPlayMatch, 4000);
+    // 3秒おきに裏でAI同士が自己対戦して学習を実行
+    setInterval(runBackgroundSelfPlayMatch, 3000);
 
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
@@ -1129,7 +1129,6 @@
                 if (targetStack.length > 0) score += (targetStack.length + 1) * 12;
                 score += m.z * 5;
 
-                // 自己対戦で得た蓄積知見（定石ボーナス）を加算して最適手を選択
                 let hashKey = `${m.x}${m.z}${topPiece.name}`;
                 if (selfPlayKnowledge[hashKey]) {
                   score += selfPlayKnowledge[hashKey] * 2.0;
@@ -1334,7 +1333,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs 自律自己対戦AI)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs 自律学習AI)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
