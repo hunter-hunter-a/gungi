@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <title>軍儀 3D - Full Deep Simulation (v6.0)</title>
+  <title>軍儀 3D - Reinforcement Learning Engine (v7.0)</title>
   <style>
     * { 
       margin: 0; 
@@ -202,7 +202,7 @@
   </div>
 
   <div id="info">
-    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Full Simulation Engine</span></h2>
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">RL Engine (v7.0)</span></h2>
     <p id="mode-desc">モードを選択してください</p>
     <div id="status">対局準備中...</div>
     <div id="ai-stats">🧠 AI成長度: データを同期中...</div>
@@ -217,8 +217,8 @@
     <h3>対局モード選択</h3>
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
-      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級・完全思考)</button>
-      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・永久深層学習)</button>
+      <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級)</button>
+      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs CPU - 上級・強化学習型)</button>
       <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・全学習)</button>
       <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・全学習)</button>
     </div>
@@ -280,6 +280,7 @@
     let cpuKnowledgeBase = {};
     let totalExperience = 0;
     let isLearningActive = false;
+    let currentMatchHistoryHashes = []; // 今の対局でCPUが通った局面の履歴
 
     try {
       firebase.initializeApp(firebaseConfig);
@@ -303,7 +304,7 @@
       
       const statsEl = document.getElementById('ai-stats');
       if (statsEl) {
-        statsEl.textContent = `🧠 AI成長度: Lv.${aiLevel} (学習局面: ${knowledgeCount} / 累計経験値: ${totalExperience})`;
+        statsEl.textContent = `🧠 AI成長度(RL): Lv.${aiLevel} (学習局面: ${knowledgeCount} / 累計経験値: ${totalExperience})`;
       }
     }
 
@@ -311,7 +312,7 @@
       isLearningActive = true;
       const statusEl = document.getElementById('status');
       if (!winModal.style.display || winModal.style.display === 'none') {
-        statusEl.innerHTML = `<span style="color: #00ffcc;">⚡ [AI自己学習・クラウド同期中...]</span>`;
+        statusEl.innerHTML = `<span style="color: #00ffcc;">⚡ [強化学習・勝敗フィードバック中...]</span>`;
       }
       setTimeout(() => {
         isLearningActive = false;
@@ -319,18 +320,28 @@
       }, 800);
     }
 
-    function syncKnowledgeToCloud(boardHash, val) {
-      cpuKnowledgeBase[boardHash] = (cpuKnowledgeBase[boardHash] || 0) + val;
-      totalExperience += val;
+    // 【強化学習の中核】勝敗の結果（reward）をもとに、この対局で通った全局面に報酬を逆算付与
+    function processReinforcementLearning(didCPWin) {
+      if (currentMatchHistoryHashes.length === 0) return;
+
+      const reward = didCPWin ? 20 : -10; // 勝ったら＋20点、負けたら－10点（ペナルティ）
+      const updateData = {};
+
+      currentMatchHistoryHashes.forEach(hash => {
+        cpuKnowledgeBase[hash] = (cpuKnowledgeBase[hash] || 0) + reward;
+        totalExperience += Math.max(1, reward);
+        updateData[`knowledge.${hash}`] = firebase.firestore.FieldValue.increment(reward);
+      });
+
+      updateData[`total_exp`] = firebase.firestore.FieldValue.increment(currentMatchHistoryHashes.length * Math.max(1, reward));
+      
       showLearningIndicator();
       updateAIStatsUI();
-      
+
       if (db) {
-        const updateData = {};
-        updateData[`knowledge.${boardHash}`] = firebase.firestore.FieldValue.increment(val);
-        updateData[`total_exp`] = firebase.firestore.FieldValue.increment(val);
         db.collection("ai_knowledge").doc(GAME_VERSION).set(updateData, { merge: true });
       }
+      currentMatchHistoryHashes = []; // 履歴をリセット
     }
 
     const container = document.getElementById('canvas-container');
@@ -1032,21 +1043,12 @@
       }
 
       let finalScore = Math.min(100, Math.max(10, Math.round(rawScore)));
-      
-      let comment = '（普通の手）';
-      const boardHash = generateBoardHash();
-      syncKnowledgeToCloud(boardHash, 15);
-
-      return `${finalScore}点 ${comment}`;
+      return `${finalScore}点`;
     }
 
-    // --- 【ディープ・フルシミュレーション用・仮想盤面検証エンジン】 ---
-
-    // 人間（または相手）が次の手で直接『帥』を即座に取れる手があるかフルスキャン
     function canEnemyCaptureSuiDirectly(isCPUP1) {
       const enemyIsP1 = !isCPUP1;
       
-      // 1. 相手の盤上の全駒の移動・重ね・取りで帥を取れるか
       for (let bx = 0; bx < BOARD_SIZE; bx++) {
         for (let bz = 0; bz < BOARD_SIZE; bz++) {
           const stack = boardData[bx][bz];
@@ -1061,7 +1063,7 @@
                 if (targetStack.length > 0) {
                   const targetTop = targetStack[targetStack.length - 1];
                   if (targetTop.name === '帥' && targetTop.isPlayer1 === isCPUP1) {
-                    return true; // 直接取れる手が存在する
+                    return true;
                   }
                 }
               }
@@ -1070,7 +1072,6 @@
         }
       }
 
-      // 2. 相手の手駒（あらた）を打って即座に帥を取れるか
       const enemyHand = enemyIsP1 ? p1HandPieces.filter(p => p.inHand) : p2HandPieces.filter(p => p.inHand);
       if (enemyHand.length > 0) {
         for (let h = 0; h < enemyHand.length; h++) {
@@ -1083,7 +1084,7 @@
             if (targetStack.length > 0) {
               const targetTop = targetStack[targetStack.length - 1];
               if (targetTop.name === '帥' && targetTop.isPlayer1 === isCPUP1) {
-                return true; // あらたで直接取れる手が存在する
+                return true;
               }
             }
           }
@@ -1093,7 +1094,6 @@
       return false;
     }
 
-    // CPUが候補手（c）を指した未来の仮想盤面を作り、人間側の全手（全駒＋全あらた）で帥が取られるか完全シミュレーション
     function isMoveCompletelySafeDeepSimulation(pieceData, targetX, targetZ) {
       const isCPUP1 = pieceData.isPlayer1;
       const origX = pieceData.gridX;
@@ -1103,10 +1103,8 @@
       const sourceStack = origInHand ? null : boardData[origX][origZ];
       const targetStack = boardData[targetX][targetZ];
 
-      // --- 仮想的に手を適用 ---
       let capturedPieces = [];
       if (targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1 !== isCPUP1) {
-        // 取り（TAKE）のシミュレーション
         const enemyColor = targetStack[targetStack.length - 1].isPlayer1;
         while (targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1 === enemyColor) {
           capturedPieces.push(targetStack.pop());
@@ -1119,10 +1117,8 @@
       pieceData.gridZ = targetZ;
       targetStack.push(pieceData);
 
-      // --- 人間のあらゆる反撃（全駒移動・全取り・全あらた）で帥が取られるか検証 ---
       const isSafe = !canEnemyCaptureSuiDirectly(isCPUP1);
 
-      // --- 仮想盤面を元の状態に完全復元 ---
       targetStack.pop();
       if (capturedPieces.length > 0) {
         while (capturedPieces.length > 0) {
@@ -1137,25 +1133,11 @@
       return isSafe;
     }
 
-    function runBackgroundSelfPlay() {
-      if (phase !== 'PLAY') return;
-      
-      const dummyX = Math.floor(Math.random() * BOARD_SIZE);
-      const dummyZ = Math.floor(Math.random() * BOARD_SIZE);
-      const currentHash = `self_play_${dummyX}_${dummyZ}_` + generateBoardHash();
-      
-      syncKnowledgeToCloud(currentHash, 5);
-    }
-
-    setInterval(runBackgroundSelfPlay, 3000);
-
-    // 【ディープ・フルシミュレーション搭載エンジン】
     function makeCPUMove() {
       if (winModal.style.display === 'block') return;
 
       const allCandidates = [];
 
-      // 1. 盤上の全CPU駒の動かせる手（移動・重ね・取り）を全走査
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const stack = boardData[x][z];
@@ -1165,11 +1147,9 @@
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
                 let score = evaluateCandidateMove(topPiece, m.x, m.z);
-                
-                // 完全な仮想盤面シミュレーションで反撃王手を深層検証
                 const isSafe = isMoveCompletelySafeDeepSimulation(topPiece, m.x, m.z);
 
-                if (!isSafe) score = -1000000000; // 自爆手はマイナス10億（完全排除）
+                if (!isSafe) score = -1000000000;
 
                 if (score > -900000000) {
                   allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
@@ -1180,12 +1160,10 @@
         }
       }
 
-      // 2. 手駒（あらた）を打つ全可能性も全走査
       p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
           let score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
-          
           const isSafe = isMoveCompletelySafeDeepSimulation(handPiece, m.x, m.z);
           if (!isSafe) score = -1000000000;
 
@@ -1197,17 +1175,14 @@
 
       const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000000);
 
-      // 【完全詰み判定】どんな手を指しても次の手で帥が取られる完全な詰み以外は絶対負けない
       if (perfectlySafeCandidates.length === 0) {
         winDesc.textContent = `CPUは完全な詰みを察知し、降参（投了）しました！あなたの勝利です！`;
         winModal.style.display = 'block';
         isCPUThinking = false;
+        processReinforcementLearning(false); // CPUの負け
         return;
       }
 
-      let chosenMove = null;
-
-      // 3. クラウド上の永久成長ナレッジベース（学習値）を合成して最高の防衛手を選択
       perfectlySafeCandidates.forEach(c => {
         const origX = c.pieceData.gridX;
         const origZ = c.pieceData.gridZ;
@@ -1224,7 +1199,7 @@
         const futureHash = generateBoardHash();
         const learnedVal = cpuKnowledgeBase[futureHash] || 0;
 
-        const weight = (cpuLevel === 'HARD') ? 3.5 : 1.5;
+        const weight = (cpuLevel === 'HARD') ? 4.0 : 1.5;
         c.score += evaluateBoardState() * weight + learnedVal;
 
         targetStack.pop();
@@ -1235,10 +1210,11 @@
       });
 
       perfectlySafeCandidates.sort((a, b) => b.score - a.score);
-      chosenMove = perfectlySafeCandidates[0];
+      const chosenMove = perfectlySafeCandidates[0];
 
+      // 現在の盤面ハッシュを履歴に記録（強化学習用）
       const currentHash = generateBoardHash();
-      syncKnowledgeToCloud(currentHash, 8);
+      currentMatchHistoryHashes.push(currentHash);
 
       const targetStack = boardData[chosenMove.targetX][chosenMove.targetZ];
       const hasEnemyTop = targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1;
@@ -1248,7 +1224,6 @@
       isCPUThinking = false;
     }
 
-    // --- 【完全復元スナップショットメモ（待った機能）】 ---
     function saveState() {
       const state = {
         isPlayer1Turn,
@@ -1397,7 +1372,8 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 初級・完全思考)';
+      currentMatchHistoryHashes = [];
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 初級)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1412,7 +1388,8 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・永久深層学習)';
+      currentMatchHistoryHashes = [];
+      modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 上級・強化学習型)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1489,11 +1466,6 @@
           }
           handleMoveAttempt(selectedPieceData, clickedPiece.gridX, clickedPiece.gridZ);
           return;
-        }
-
-        if (!isVsCPU) {
-          const boardHash = generateBoardHash();
-          syncKnowledgeToCloud(boardHash, 10);
         }
 
         if (clickedPiece.isPlayer1 !== isPlayer1Turn) {
@@ -1656,9 +1628,6 @@
 
       if (isVsCPU && isPlayer1Turn) {
         lastMoveEvalText = evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType);
-      } else if (!isVsCPU) {
-        const boardHash = generateBoardHash();
-        syncKnowledgeToCloud(boardHash, 10);
       }
 
       const targetStack = boardData[targetX][targetZ];
@@ -1733,6 +1702,12 @@
         const winnerStr = isPlayer1Turn ? (isVsCPU ? 'あなた' : '白（先手）') : (isVsCPU ? 'CPU' : '黒（後手）');
         winDesc.textContent = `${winnerStr} が『帥』を討ち取り、勝利しました！`;
         winModal.style.display = 'block';
+
+        // --- 勝敗決定による強化学習フィードバック発動 ---
+        if (isVsCPU) {
+          const didCPWin = !isPlayer1Turn;
+          processReinforcementLearning(didCPWin);
+        }
         return;
       }
 
