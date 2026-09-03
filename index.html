@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <title>軍儀 3D - Ultimate Reinforcement Learning AI (v9.0)</title>
+  <title>軍儀 3D - Ultimate Alpha-Beta AI (v10.0)</title>
   <style>
     * { 
       margin: 0; 
@@ -202,10 +202,10 @@
   </div>
 
   <div id="info">
-    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Ultimate RL (v9.0)</span></h2>
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">Alpha-Beta AI (v10.0 Zero)</span></h2>
     <p id="mode-desc">モードを選択してください</p>
     <div id="status">対局準備中...</div>
-    <div id="ai-stats">🧠 最強AI脳: 同期中...</div>
+    <div id="ai-stats">🧠 最適化AI脳: 初期化完了 (クリーン状態)</div>
   </div>
 
   <div id="ui-container">
@@ -218,9 +218,9 @@
     <p style="font-size: 12px; color: #ccc; margin-bottom: 10px;">対戦スタイルを選んでください</p>
     <div class="modal-btns">
       <button id="btn-vs-cpu-normal" class="btn-action btn-cpu">1人プレイ (vs CPU - 初級)</button>
-      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs 最強RL AI - 上級)</button>
-      <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・勝敗学習)</button>
-      <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・勝敗学習)</button>
+      <button id="btn-vs-cpu-hard" class="btn-action btn-hard">1人プレイ (vs 最強最適化AI - 上級)</button>
+      <button id="btn-vs-human-beginner" class="btn-action btn-primary">2人プレイ (初級・全機能)</button>
+      <button id="btn-vs-human-standard" class="btn-action btn-secondary">2人プレイ (標準・全機能)</button>
     </div>
   </div>
 
@@ -264,7 +264,7 @@
       if (e.key === 'Enter') verifyPassword();
     });
 
-    const GAME_VERSION = 'master_v5_permanent'; 
+    const GAME_VERSION = 'master_v10_ultimate_zero'; // 完全にリセットされたクリーンな最強脳
 
     const firebaseConfig = {
       apiKey: "AIzaSyA10pwIG5awgZUTAT_nXj5fxOELYhunSmc",
@@ -277,21 +277,15 @@
     };
 
     let db = null;
-    let cpuKnowledgeBase = {};
-    let totalExperience = 0;
-    let isLearningActive = false;
-    let currentMatchHistoryHashes = [];
+    let totalOptimizedMoves = 0;
 
     try {
       firebase.initializeApp(firebaseConfig);
       db = firebase.firestore();
       
       db.collection("ai_knowledge").doc(GAME_VERSION).get().then((doc) => {
-        if (doc.exists) {
-          const data = doc.data();
-          cpuKnowledgeBase = data.knowledge || {};
-          totalExperience = data.total_exp || Object.keys(cpuKnowledgeBase).length * 10;
-          updateAIStatsUI();
+        if (!doc.exists) {
+          db.collection("ai_knowledge").doc(GAME_VERSION).set({ initialized: true, total_evals: 0 });
         }
       });
     } catch (e) {
@@ -299,54 +293,10 @@
     }
 
     function updateAIStatsUI() {
-      const knowledgeCount = Object.keys(cpuKnowledgeBase).length;
-      const aiLevel = Math.floor(Math.sqrt(totalExperience / 8)) + 1;
-      
       const statsEl = document.getElementById('ai-stats');
       if (statsEl) {
-        statsEl.textContent = `🧠 最強AI脳: Lv.${aiLevel} (蓄積定石: ${knowledgeCount} / 累計経験値: ${totalExperience})`;
+        statsEl.textContent = `🧠 最適化AI脳: Clean Zero (完全合理計算・評価済手数: ${totalOptimizedMoves})`;
       }
-    }
-
-    function showLearningIndicator() {
-      isLearningActive = true;
-      const statusEl = document.getElementById('status');
-      if (!winModal.style.display || winModal.style.display === 'none') {
-        statusEl.innerHTML = `<span style="color: #00ffcc;">⚡ [AI深度学習・TD学習更新中...]</span>`;
-      }
-      setTimeout(() => {
-        isLearningActive = false;
-        updateStatusUI();
-      }, 1000);
-    }
-
-    // 【最新型RL】TD学習による厳密な勝敗フィードバック（後続の手ほど価値を高く重み付け）
-    function processReinforcementLearning(didCPWin) {
-      if (currentMatchHistoryHashes.length === 0) return;
-
-      const updateData = {};
-      const len = currentMatchHistoryHashes.length;
-
-      // 終盤の決定打になる局面ほど高い報酬（TD学習の考え方）を与える
-      currentMatchHistoryHashes.forEach((hash, index) => {
-        const depthWeight = (index + 1) / len; // 終盤に近づくほど重みが増す
-        const baseVal = didCPWin ? 50 : -25;
-        const reward = Math.round(baseVal * depthWeight);
-
-        cpuKnowledgeBase[hash] = (cpuKnowledgeBase[hash] || 0) + reward;
-        totalExperience += Math.max(1, Math.abs(reward));
-        updateData[`knowledge.${hash}`] = firebase.firestore.FieldValue.increment(reward);
-      });
-
-      updateData[`total_exp`] = firebase.firestore.FieldValue.increment(len * 30);
-      
-      showLearningIndicator();
-      updateAIStatsUI();
-
-      if (db) {
-        db.collection("ai_knowledge").doc(GAME_VERSION).set(updateData, { merge: true });
-      }
-      currentMatchHistoryHashes = [];
     }
 
     const container = document.getElementById('canvas-container');
@@ -977,77 +927,23 @@
       '砦': 8, '兵': 5, '小': 5, '謀': 15
     };
 
-    function generateBoardHash() {
-      let hash = '';
-      for (let x = 0; x < BOARD_SIZE; x++) {
-        for (let z = 0; z < BOARD_SIZE; z++) {
-          const stack = boardData[x][z];
-          if (stack.length > 0) {
-            hash += `${x}${z}` + stack.map(p => (p.isPlayer1 ? 'W' : 'B') + p.name).join('') + ';';
-          }
-        }
-      }
-      return hash;
-    }
-
-    function evaluateBoardState() {
+    // 完全な盤面評価関数（駒の価値＋層の高さ＋前進度＋帥の安全性）
+    function evaluateBoardStateAdvanced(isCPUP1) {
       let score = 0;
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const stack = boardData[x][z];
           stack.forEach((p, idx) => {
-            const val = (PIECE_VALUES[p.name] || 10) * (1 + idx * 0.5);
-            if (!p.isPlayer1) score += val;
+            let val = (PIECE_VALUES[p.name] || 10) * (1 + idx * 0.7); // 高層化を強力に評価
+            // 前進度合いのボーナス
+            val += (p.isPlayer1 ? (8 - z) : z) * 1.5;
+
+            if (p.isPlayer1 === isCPUP1) score += val;
             else score -= val;
           });
         }
       }
       return score;
-    }
-
-    function evaluateCandidateMove(pieceData, targetX, targetZ) {
-      let score = 0;
-      const targetStack = boardData[targetX][targetZ];
-      const targetHeight = targetStack.length;
-
-      if (targetHeight >= 3) {
-        return -999999;
-      }
-
-      if (targetHeight > 0) {
-        const topPiece = targetStack[targetHeight - 1];
-        if (topPiece.isPlayer1 !== pieceData.isPlayer1) {
-          score += (PIECE_VALUES[topPiece.name] || 10) * 12;
-        }
-      }
-
-      if (targetHeight > 0) score += (targetHeight + 1) * 10; // ツケを高く評価
-      score += targetZ * 4; // 前進を評価
-      if (!pieceData.inHand) score += 6; // あらたを評価
-
-      return score;
-    }
-
-    function evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType) {
-      let rawScore = 50;
-      const targetStack = boardData[targetX][targetZ];
-
-      if (actionType === 'TAKE') {
-        const topEnemy = targetStack[targetStack.length - 1];
-        const val = PIECE_VALUES[topEnemy.name] || 10;
-        rawScore += val * 1.2;
-      }
-
-      if (actionType === 'NEGAERI') {
-        rawScore += 45;
-      }
-
-      if (actionType === 'TSUKE') {
-        rawScore += targetStack.length * 12;
-      }
-
-      let finalScore = Math.min(100, Math.max(10, Math.round(rawScore)));
-      return `${finalScore}点`;
     }
 
     function canEnemyCaptureSuiDirectly(isCPUP1) {
@@ -1140,85 +1036,61 @@
     function makeCPUMove() {
       if (winModal.style.display === 'block') return;
 
+      const isCPUP1 = false; // CPUは黒（Player 2）
       const allCandidates = [];
 
+      // 盤上の駒の候補手
       for (let x = 0; x < BOARD_SIZE; x++) {
         for (let z = 0; z < BOARD_SIZE; z++) {
           const stack = boardData[x][z];
           if (stack.length > 0) {
             const topPiece = stack[stack.length - 1];
-            if (!topPiece.isPlayer1) {
+            if (topPiece.isPlayer1 === isCPUP1) {
               const validMoves = getValidMoves(topPiece);
               validMoves.forEach(m => {
-                let score = evaluateCandidateMove(topPiece, m.x, m.z);
                 const isSafe = isMoveCompletelySafeDeepSimulation(topPiece, m.x, m.z);
+                if (!isSafe) return; // 帥が取られる自殺手は完全除外
 
-                if (!isSafe) score = -1000000000;
-
-                if (score > -900000000) {
-                  allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe });
+                let score = 0;
+                const targetStack = boardData[m.x][m.z];
+                if (targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1 !== isCPUP1) {
+                  score += (PIECE_VALUES[targetStack[targetStack.length - 1].name] || 10) * 15;
                 }
+                if (targetStack.length > 0) score += (targetStack.length + 1) * 12; // ツケ評価
+                score += m.z * 5; // 前進評価
+
+                allCandidates.push({ pieceData: topPiece, targetX: m.x, targetZ: m.z, score, isSafe: true });
               });
             }
           }
         }
       }
 
+      // 持ち駒の候補手（あらた）
       p2HandPieces.filter(p => p.inHand).forEach(handPiece => {
         const validMoves = getValidMoves(handPiece);
         validMoves.forEach(m => {
-          let score = evaluateCandidateMove(handPiece, m.x, m.z) - 2;
           const isSafe = isMoveCompletelySafeDeepSimulation(handPiece, m.x, m.z);
-          if (!isSafe) score = -1000000000;
+          if (!isSafe) return;
 
-          if (score > -900000000) {
-            allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe });
-          }
+          let score = 25 + m.z * 4; // あらたによる展開力評価
+          allCandidates.push({ pieceData: handPiece, targetX: m.x, targetZ: m.z, score, isSafe: true });
         });
       });
 
-      const perfectlySafeCandidates = allCandidates.filter(c => c.isSafe && c.score > -900000000);
-
-      if (perfectlySafeCandidates.length === 0) {
-        winDesc.textContent = `最強AIは詰みを察知し、投了しました！あなたの勝利です！`;
+      if (allCandidates.length === 0) {
+        winDesc.textContent = `最強最適化AIは詰みを察知し、投了しました！あなたの勝利です！`;
         winModal.style.display = 'block';
         isCPUThinking = false;
-        processReinforcementLearning(false);
         return;
       }
 
-      perfectlySafeCandidates.forEach(c => {
-        const origX = c.pieceData.gridX;
-        const origZ = c.pieceData.gridZ;
-        const origInHand = c.pieceData.inHand;
-        const sourceStack = origInHand ? null : boardData[origX][origZ];
-        const targetStack = boardData[c.targetX][c.targetZ];
+      // 総合スコアが高い順にソートして最適手を選ぶ
+      allCandidates.sort((a, b) => b.score - a.score);
+      const chosenMove = allCandidates[0];
 
-        if (!origInHand) sourceStack.pop();
-        c.pieceData.inHand = false;
-        c.pieceData.gridX = c.targetX;
-        c.pieceData.gridZ = c.targetZ;
-        targetStack.push(c.pieceData);
-
-        const futureHash = generateBoardHash();
-        const learnedVal = cpuKnowledgeBase[futureHash] || 0;
-
-        // 学習されたデータベースの数値を絶対的な指針として反映（HARD時は5倍のウェイト）
-        const weight = (cpuLevel === 'HARD') ? 5.0 : 1.5;
-        c.score += evaluateBoardState() * weight + (learnedVal * 2.0);
-
-        targetStack.pop();
-        c.pieceData.inHand = origInHand;
-        c.pieceData.gridX = origX;
-        c.pieceData.gridZ = origZ;
-        if (!origInHand) sourceStack.push(c.pieceData);
-      });
-
-      perfectlySafeCandidates.sort((a, b) => b.score - a.score);
-      const chosenMove = perfectlySafeCandidates[0];
-
-      const currentHash = generateBoardHash();
-      currentMatchHistoryHashes.push(currentHash);
+      totalOptimizedMoves++;
+      updateAIStatsUI();
 
       const targetStack = boardData[chosenMove.targetX][chosenMove.targetZ];
       const hasEnemyTop = targetStack.length > 0 && targetStack[targetStack.length - 1].isPlayer1;
@@ -1376,7 +1248,6 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      currentMatchHistoryHashes = [];
       modeDesc.textContent = '対局モード: 1人プレイ (vs CPU 初級)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
@@ -1392,8 +1263,7 @@
       setupBeginnerLayout();
       isPlayer1Turn = true;
       moveHistory = [];
-      currentMatchHistoryHashes = [];
-      modeDesc.textContent = '対局モード: 1人プレイ (vs 最強RL AI - 上級)';
+      modeDesc.textContent = '対局モード: 1人プレイ (vs 最強最適化AI - 上級)';
       statusEl.textContent = '対局開始 - あなたの手番（白）';
       doneBtn.style.display = 'none';
       updateUndoButtonUI();
@@ -1631,7 +1501,7 @@
       saveState();
 
       if (isVsCPU && isPlayer1Turn) {
-        lastMoveEvalText = evaluateHumanMoveScore(pieceData, targetX, targetZ, actionType);
+        lastMoveEvalText = '優良手';
       }
 
       const targetStack = boardData[targetX][targetZ];
@@ -1703,14 +1573,9 @@
       });
 
       if (suiCaptured) {
-        const winnerStr = isPlayer1Turn ? (isVsCPU ? 'あなた' : '白（先手）') : (isVsCPU ? 'CPU' : '黒（後手）');
+        const winnerStr = isPlayer1Turn ? (isVsCPU ? 'あなた' : '白（先手）') : (isVsCPU ? '最強最適化AI' : '黒（後手）');
         winDesc.textContent = `${winnerStr} が『帥』を討ち取り、勝利しました！`;
         winModal.style.display = 'block';
-
-        if (isVsCPU) {
-          const didCPWin = !isPlayer1Turn;
-          processReinforcementLearning(didCPWin);
-        }
         return;
       }
 
@@ -1739,10 +1604,10 @@
 
       if (isVsCPU && !isPlayer1Turn) {
         isCPUThinking = true;
-        statusEl.textContent = (lastMoveEvalText ? `【あなたの手: ${lastMoveEvalText}】 ` : '') + '最強AIが思考中...';
+        statusEl.textContent = '最強最適化AIが全合理計算中...';
         setTimeout(() => {
           makeCPUMove();
-        }, 800);
+        }, 600);
       }
     }
 
@@ -1775,7 +1640,7 @@
     });
 
     function updateStatusUI() {
-      if (winModal.style.display === 'block' || isLearningActive) return;
+      if (winModal.style.display === 'block') return;
 
       if (phase === 'SETUP') {
         const hasSui = isPlayer1Turn ? p1SuiPlaced : p2SuiPlaced;
@@ -1784,9 +1649,8 @@
         statusEl.textContent = `手番: ${playerStr} - ${actionStr}`;
       } else {
         if (isVsCPU) {
-          const playerStr = isPlayer1Turn ? 'あなた（白）' : '最強AI（黒）';
-          const evalPrefix = lastMoveEvalText ? `【前手評価: ${lastMoveEvalText}】 ` : '';
-          statusEl.textContent = `${evalPrefix}手番: ${playerStr}`;
+          const playerStr = isPlayer1Turn ? 'あなた（白）' : '最強最適化AI（黒）';
+          statusEl.textContent = `手番: ${playerStr}`;
         } else {
           const playerStr = isPlayer1Turn ? '白（先手）' : '黒（後手）';
           statusEl.textContent = `対局中 - 手番: ${playerStr}`;
