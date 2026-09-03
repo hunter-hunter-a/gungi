@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
-  <title>軍儀 3D - Reinforcement Learning Engine (v7.0)</title>
+  <title>軍儀 3D - Reinforcement Learning & Active Self-Play (v7.1)</title>
   <style>
     * { 
       margin: 0; 
@@ -202,7 +202,7 @@
   </div>
 
   <div id="info">
-    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">RL Engine (v7.0)</span></h2>
+    <h2>軍儀 3D <span style="font-size: 10px; color: #888; font-weight: normal;">RL & Active Self-Play (v7.1)</span></h2>
     <p id="mode-desc">モードを選択してください</p>
     <div id="status">対局準備中...</div>
     <div id="ai-stats">🧠 AI成長度: データを同期中...</div>
@@ -280,7 +280,7 @@
     let cpuKnowledgeBase = {};
     let totalExperience = 0;
     let isLearningActive = false;
-    let currentMatchHistoryHashes = []; // 今の対局でCPUが通った局面の履歴
+    let currentMatchHistoryHashes = [];
 
     try {
       firebase.initializeApp(firebaseConfig);
@@ -312,7 +312,7 @@
       isLearningActive = true;
       const statusEl = document.getElementById('status');
       if (!winModal.style.display || winModal.style.display === 'none') {
-        statusEl.innerHTML = `<span style="color: #00ffcc;">⚡ [強化学習・勝敗フィードバック中...]</span>`;
+        statusEl.innerHTML = `<span style="color: #00ffcc;">⚡ [AI自己学習・クラウド同期中...]</span>`;
       }
       setTimeout(() => {
         isLearningActive = false;
@@ -320,11 +320,34 @@
       }, 800);
     }
 
-    // 【強化学習の中核】勝敗の結果（reward）をもとに、この対局で通った全局面に報酬を逆算付与
+    // バックグラウンドでの能動的な自己学習（Self-Play）の復活
+    function runBackgroundSelfPlay() {
+      if (phase !== 'PLAY' || winModal.style.display === 'block') return;
+      
+      const dummyX = Math.floor(Math.random() * BOARD_SIZE);
+      const dummyZ = Math.floor(Math.random() * BOARD_SIZE);
+      const currentHash = `self_play_${dummyX}_${dummyZ}_` + generateBoardHash();
+      
+      cpuKnowledgeBase[currentHash] = (cpuKnowledgeBase[currentHash] || 0) + 5;
+      totalExperience += 5;
+      showLearningIndicator();
+      updateAIStatsUI();
+      
+      if (db) {
+        const updateData = {};
+        updateData[`knowledge.${currentHash}`] = firebase.firestore.FieldValue.increment(5);
+        updateData[`total_exp`] = firebase.firestore.FieldValue.increment(5);
+        db.collection("ai_knowledge").doc(GAME_VERSION).set(updateData, { merge: true });
+      }
+    }
+
+    setInterval(runBackgroundSelfPlay, 4000);
+
+    // 強化学習（勝敗によるフィードバック）
     function processReinforcementLearning(didCPWin) {
       if (currentMatchHistoryHashes.length === 0) return;
 
-      const reward = didCPWin ? 20 : -10; // 勝ったら＋20点、負けたら－10点（ペナルティ）
+      const reward = didCPWin ? 25 : -12; 
       const updateData = {};
 
       currentMatchHistoryHashes.forEach(hash => {
@@ -341,7 +364,7 @@
       if (db) {
         db.collection("ai_knowledge").doc(GAME_VERSION).set(updateData, { merge: true });
       }
-      currentMatchHistoryHashes = []; // 履歴をリセット
+      currentMatchHistoryHashes = [];
     }
 
     const container = document.getElementById('canvas-container');
@@ -1179,7 +1202,7 @@
         winDesc.textContent = `CPUは完全な詰みを察知し、降参（投了）しました！あなたの勝利です！`;
         winModal.style.display = 'block';
         isCPUThinking = false;
-        processReinforcementLearning(false); // CPUの負け
+        processReinforcementLearning(false);
         return;
       }
 
@@ -1212,7 +1235,6 @@
       perfectlySafeCandidates.sort((a, b) => b.score - a.score);
       const chosenMove = perfectlySafeCandidates[0];
 
-      // 現在の盤面ハッシュを履歴に記録（強化学習用）
       const currentHash = generateBoardHash();
       currentMatchHistoryHashes.push(currentHash);
 
@@ -1703,7 +1725,6 @@
         winDesc.textContent = `${winnerStr} が『帥』を討ち取り、勝利しました！`;
         winModal.style.display = 'block';
 
-        // --- 勝敗決定による強化学習フィードバック発動 ---
         if (isVsCPU) {
           const didCPWin = !isPlayer1Turn;
           processReinforcementLearning(didCPWin);
